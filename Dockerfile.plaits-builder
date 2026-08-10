@@ -1,0 +1,176 @@
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN dpkg --add-architecture i386 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        bzip2 \
+        ca-certificates \
+        ccache \
+        ffmpeg \
+        libc6:i386 \
+        libsndfile1 \
+        libstdc++6:i386 \
+        python2.7 \
+        python3 \
+        python3-dev \
+        python3-pip \
+        python3-reportlab \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN wget --progress=dot:giga --timeout=30 --tries=3 \
+        https://launchpad.net/gcc-arm-embedded/4.8/4.8-2013-q4-major/+download/gcc-arm-none-eabi-4_8-2013q4-20131204-linux.tar.bz2 \
+        -O /tmp/arm-toolchain.tar.bz2 \
+    && mkdir -p /usr/local/arm-4.8.3 \
+    && tar -xjf /tmp/arm-toolchain.tar.bz2 -C /usr/local/arm-4.8.3 --strip-components=1 \
+    && rm /tmp/arm-toolchain.tar.bz2
+
+RUN wget -q https://bootstrap.pypa.io/pip/2.7/get-pip.py -O /tmp/get-pip.py \
+    && python2.7 /tmp/get-pip.py \
+    && python2.7 -m pip install --no-cache-dir numpy==1.16.6 \
+    && rm /tmp/get-pip.py \
+    && ln -s /usr/bin/python2.7 /usr/local/bin/python
+
+# The public Speech-bank editor runs the same pinned Kokoro + LPC pipeline that
+# produced the hardware-tested banks. Models and dictionaries are baked into
+# the network-isolated image; a customer request never downloads code or data.
+RUN python3 -m pip install --no-cache-dir "pip==26.1" \
+    && python3 -m pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==2.13.0" \
+    && python3 -m pip install --no-cache-dir \
+        "cmake<4" \
+        "cython>=0.29.16" \
+        "numpy==2.2.6" \
+        "setuptools_scm>=8" \
+    && python3 -m pip install --no-cache-dir --no-build-isolation \
+        "pyopenjtalk==0.4.1" \
+    && python3 -m pip install --no-cache-dir \
+        "kokoro==0.9.4" \
+        "misaki[en,ja,zh]==0.9.4" \
+        "soundfile==0.14.0" \
+        "huggingface_hub==1.26.0" \
+    && python3 -m unidic download
+
+# Ubuntu's ReportLab package brings in Pillow 9.0, while current Transformers
+# imports the Image.Resampling API added in Pillow 9.1 even for audio-only
+# models. Keep the system ReportLab, but ensure Kokoro sees a compatible Pillow.
+RUN python3 -m pip install --no-cache-dir "pillow==11.3.0"
+
+# Download as root during the image build, then read the same immutable cache as
+# the unprivileged `builder` user at request time.
+ENV HF_HOME="/opt/huggingface"
+
+RUN python3 - <<'PY'
+from huggingface_hub import hf_hub_download
+repo = "hexgrad/Kokoro-82M"
+voices = """
+af_heart af_bella af_nicole am_fenrir am_michael
+bf_emma bm_fable bm_george ef_dora em_alex ff_siwis
+hf_alpha hm_omega if_sara im_nicola pf_dora pm_alex
+jf_alpha jf_gongitsune jf_nezumi jf_tebukuro jm_kumo
+zf_xiaobei zf_xiaoni zf_xiaoxiao zf_xiaoyi
+zm_yunjian zm_yunxi zm_yunxia zm_yunyang
+""".split()
+for filename in ["config.json", "kokoro-v1_0.pth", *(f"voices/{voice}.pt" for voice in voices)]:
+    hf_hub_download(repo_id=repo, filename=filename)
+PY
+
+# Misaki's English G2P asks spaCy to download this model on first use when it
+# is absent. Production containers have no outbound network, so bake the exact
+# compatible wheel after the much larger voice layer and keep requests offline.
+RUN python3 -m pip install --no-cache-dir \
+    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+
+RUN useradd --create-home --uid 10001 builder
+
+COPY --chown=builder:builder . /workspace
+# Submodules copy in as ordinary directories, so an uninitialized checkout would
+# produce an image that builds cleanly here and then fails every compile at
+# request time. Fail the build instead.
+RUN test -f /workspace/stmlib/dsp/dsp.h \
+    && test -f /workspace/stm_audio_bootloader/fsk/packet_decoder.h \
+    || { echo "Submodule content missing. Run 'git submodule update --init stmlib stm_audio_bootloader' before docker build." >&2; exit 1; }
+# Fail the image build if a source unit started reading the recipe config
+# (engine_config.h / build_config.h) without being added to RECIPE_CONFIG_OBJS —
+# otherwise it would silently compile with default options instead of the recipe's.
+RUN cd /workspace && python3 alt_firmwares/plaits_lab_builder/check_config_scope.py
+
+RUN c++ -std=c++11 -O2 -w -I /workspace \
+        /workspace/alt_firmwares/plaits_lab_builder/render_lpc_bank.cc \
+        /workspace/plaits/dsp/speech/lpc_speech_synth.cc \
+        /workspace/plaits/resources.cc \
+        /workspace/stmlib/utils/random.cc \
+        -o /usr/local/bin/plaits-render-lpc-bank \
+    && c++ -std=c++11 -O2 -w -I /workspace \
+        /workspace/alt_firmwares/plaits_lab_builder/render_stock_speech_bank.cc \
+        /workspace/plaits/dsp/speech/lpc_speech_synth.cc \
+        /workspace/plaits/dsp/speech/lpc_speech_synth_controller.cc \
+        /workspace/plaits/dsp/speech/lpc_speech_synth_phonemes.cc \
+        /workspace/plaits/dsp/speech/lpc_speech_synth_words.cc \
+        /workspace/plaits/resources.cc \
+        /workspace/stmlib/dsp/units.cc \
+        /workspace/stmlib/utils/random.cc \
+        -o /usr/local/bin/plaits-render-stock-speech-bank
+
+# resources.cc is checked in, but its make rule regenerates it whenever a
+# resources/*.py prerequisite is newer. COPY does not preserve the committed
+# ordering, and the read-only workspace cannot be rewritten at build or request
+# time, so stamp the generated file as newest to keep make from touching it.
+# NOTE: the local hardware build mounts the host checkout read-only OVER this
+# stamp, so plaits_lab.py hardware_build_command re-stamps the same file on the
+# host before `docker run`. If you ever add another generated-in-tree file that
+# make can rebuild, stamp it in BOTH places or the read-only build breaks again.
+RUN touch /workspace/plaits/resources.cc
+RUN chmod -R a-w /workspace
+
+# The container stamps this into every artifact's X-Plaits-Source-Revision, and
+# the Worker prefers that header over its own var when recording build metadata.
+# So the default must never be a real-looking commit: an image built without
+# --build-arg would then masquerade as that revision instead of announcing that
+# nobody set one. It used to default to 303a9afad9f1, and rev-0e6e6f202307 was
+# built without the flag and stamped that stale commit on everything it
+# compiled. "development" matches container_server.py's own fallback and is
+# obviously not a rollout, so the mistake shows up the first time anyone looks.
+ARG PLAITS_SOURCE_REVISION=development
+ARG PLAITS_BUILD_CONTRACT=2
+ENV PATH="/usr/local/arm-4.8.3/bin:${PATH}" \
+    PYTHONPATH="/workspace" \
+    PYTHONDONTWRITEBYTECODE="1" \
+    PLAITS_SOURCE_REVISION="${PLAITS_SOURCE_REVISION}" \
+    PLAITS_BUILD_CONTRACT="${PLAITS_BUILD_CONTRACT}" \
+    HF_HUB_OFFLINE="1" \
+    TRANSFORMERS_OFFLINE="1" \
+    CCACHE_DIR="/opt/ccache" \
+    CCACHE_COMPILERCHECK="content" \
+    CCACHE_MAXSIZE="2G"
+
+# Only the units listed in plaits/makefile's RECIPE_CONFIG_OBJS see the generated
+# engine_config.h; every other object is recipe-independent. Warm ccache with one
+# default build at image time so a novel recipe recompiles only those seven units.
+# The cache is baked into the image and owned by the build user so it is readable
+# when the server runs unprivileged.
+RUN mkdir -p /opt/ccache && chown -R builder:builder /opt/ccache
+USER builder
+# The locale must match container_server.py's build environment exactly: ccache
+# folds LC_ALL/LANG into its hash, so a warm entry built under a different locale
+# never matches a request-time compile and every object would miss.
+RUN cd /workspace \
+    && python3 alt_firmwares/plaits_lab_builder/generate_engine_config.py \
+        alt_firmwares/plaits_lab_builder/default_recipe.json /tmp/warm_config.h \
+    && python3 -c 'from alt_firmwares.plaits_lab_builder.speech_banks import render_speech_config; open("/tmp/warm_speech_config.h", "w").write(render_speech_config(None))' \
+    && env LC_ALL=C LANG=C LC_CTYPE=C make -s -f plaits/makefile BUILD_ROOT=/tmp/warm_build/ \
+        ENGINE_CONFIG=/tmp/warm_config.h \
+        SPEECH_CONFIG=/tmp/warm_speech_config.h \
+        "CC=ccache /usr/local/arm-4.8.3/bin/arm-none-eabi-gcc" \
+        "CXX=ccache /usr/local/arm-4.8.3/bin/arm-none-eabi-g++" \
+        DEPS= -j4 wav < /dev/null \
+    && rm -rf /tmp/warm_build /tmp/warm_config.h /tmp/warm_speech_config.h \
+    && ccache -s
+
+WORKDIR /workspace
+EXPOSE 8080
+ENTRYPOINT ["python3", "alt_firmwares/plaits_lab_builder/container_server.py"]

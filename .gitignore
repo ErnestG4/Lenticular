@@ -1,0 +1,63 @@
+# Precompiled python modules
+*.pyc
+
+# Eagle backups
+*.s#?
+*.b#?
+*.bak
+
+# Gerber files
+*.CUT
+*.GBL
+*.GBO
+*.GBS
+*.GML
+*.GTL
+*.GTO
+*.GTP
+*.GTS
+*.TXT
+*.dri
+*.gpi
+*.pro
+
+# Assembly files
+*assembly.zip
+*top.pdf
+*bottom.pdf
+*.csv
+*partlist.txt
+*.zip
+
+# LaTeX compiled file
+*.pdf
+*.log
+*.aux
+
+# OS X crap
+.DS_Stor?
+
+# Build directory
+build
+build-stock*
+node_modules/
+.wrangler/
+/tmp/
+bank_*.raw
+plaits_test
+braids/test/render_braids_model
+plaits_*_engine.wav
+/[0-9][0-9]-*.wav
+__pycache__/
+/tmp/
+
+# BETA Layout variants
+*_beta.sch
+*_BETA.sch
+*_beta.brd
+*_BETA.brd
+
+# Plaits Lab contributor WIP packages (submitted as a zip via `plaits-lab
+# submit`, not committed here). The reference packages under packages/ stay
+# tracked; only the community namespace is ignored.
+alt_firmwares/plaits_lab_sdk/packages/community/

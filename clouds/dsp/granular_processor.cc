@@ -110,7 +110,7 @@ void GranularProcessor::ProcessGranular(
       //              CCW off, then the harmonic chord ladder.
       //   TRIG     = replay the stored realization.
       parameters_.granular.use_deterministic_seed = false;
-      parameters_.granular.overlap = parameters_.density * 0.95f;
+      parameters_.granular.overlap = 0.03f + parameters_.density * 0.92f;
       parameters_.granular.window_shape = 0.6f;
       {
         const float t = parameters_.texture;

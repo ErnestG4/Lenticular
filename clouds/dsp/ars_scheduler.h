@@ -52,6 +52,11 @@ class ArsGapGenerator {
     }
   }
 
+  // Restart the chip-arp voice cycle at the chord root — called on V/Oct
+  // note changes so sequenced riffs arpeggiate phrase-locked, the way the
+  // beeper drivers restarted their arps per note.
+  void ResetArp() { round_robin_ = 3; }
+
   void Reseed() {
     for (int i = 0; i < kLoopGaps; ++i) {
       uniforms_[i] = static_cast<uint8_t>(RawUniform() * 255.0f);

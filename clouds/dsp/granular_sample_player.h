@@ -85,6 +85,7 @@ class GranularSamplePlayer {
     ars_position_offset_ = 0.0f;
     ars_pan_bias_ = 0.0f;
     ars_reese_drift_ = 0.0f;
+    ars_last_pitch_ = 0.0f;
 #ifndef ARS_LEAN
     ars_bar_ = 0;
     ars_step_ = 0;
@@ -110,6 +111,16 @@ class GranularSamplePlayer {
       p = -1.0f;
       grain_rate_phasor_ = -1000.0f;
       ars_gaps_.set_loop(parameters.ars_loop);
+      // Chip zone: V/Oct is the riff engine. A note change restarts the
+      // arp cycle at the chord root and fires immediately.
+      if (parameters.ars_zone == 0) {
+        const float dp = parameters.pitch - ars_last_pitch_;
+        if (dp > 0.7f || dp < -0.7f) {
+          ars_gaps_.ResetArp();
+          ars_countdown_ = 1.0f;
+        }
+      }
+      ars_last_pitch_ = parameters.pitch;
       if (parameters.ars_detune > 0.5f) {
         // Phase divergence of a +/- detune/2 pair, in buffer-position
         // units, wrapped every ~12 ms of offset: new grains sample the
@@ -444,6 +455,7 @@ class GranularSamplePlayer {
   float ars_position_offset_;
   float ars_pan_bias_;
   float ars_reese_drift_;
+  float ars_last_pitch_;
 #ifndef ARS_LEAN
   int16_t ars_bar_;
   int16_t ars_step_;

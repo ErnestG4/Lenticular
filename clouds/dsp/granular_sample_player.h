@@ -31,6 +31,10 @@
 
 #include "stmlib/stmlib.h"
 
+#ifdef TEST
+#include <cstdio>
+#endif
+
 #include <algorithm>
 
 #include "stmlib/dsp/atan.h"
@@ -56,6 +60,12 @@ using namespace stmlib;
 
 class GranularSamplePlayer {
  public:
+#ifdef TEST
+  // Falsification tap: exact ARS spawn times (sample index), so the
+  // statistics are verified through the real scheduler path instead of
+  // acoustic onset detection, which overlapping windows defeat.
+  long ars_test_clock_ = 0;
+#endif
   GranularSamplePlayer() { }
   ~GranularSamplePlayer() { }
   
@@ -145,6 +155,10 @@ class GranularSamplePlayer {
     
     // Build a list of available grains.
     int32_t num_available_grains = FillAvailableGrainsList();
+#ifdef TEST
+    const long ars_block_base = ars_test_clock_;
+    ars_test_clock_ += static_cast<long>(size);
+#endif
     
     // Try to schedule new grains.
     bool seed_trigger = parameters.trigger;
@@ -192,6 +206,9 @@ class GranularSamplePlayer {
               space_between_grains);
           ars_countdown_ += gap;
           seed_ars = true;
+#ifdef TEST
+          fprintf(stderr, "ARS %ld\n", ars_block_base + static_cast<long>(t));
+#endif
 
           // Chord clouds: the gap statistics choose the voice (short gaps
           // low, long gaps high — the gap melody, lifted to grains); the

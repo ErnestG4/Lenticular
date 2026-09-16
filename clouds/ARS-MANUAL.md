@@ -80,8 +80,10 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 - The grain realization loops every 32 events; TRIG replays it from the
   top. (Loop length / fray-to-random / new-seed gestures exist in the
   engine but have no panel home yet — future version.)
-- A dormant **riff engine** (swung twelve-bar figures) ships disabled; it
-  only ever sounded right on vocals and may return as a vocal mode.
+- There is deliberately no internal riff engine: **V/Oct is the riff
+  engine.** Sequence the pitch input — chords and the chip arp transpose
+  relatively, and in the chip zone a note change restarts the arp at the
+  chord root, phrase-locked, the way the beeper drivers did.
 - The statistics are the verified BubbleTime family: hyperuniform means
   *provably* anti-clumping, not "smoothed random."
 - Reverb is gone from granular mode only. Stretch/looping/spectral keep it.

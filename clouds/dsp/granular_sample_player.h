@@ -48,7 +48,9 @@
 
 namespace clouds {
 
-const int32_t kMaxNumGrains = 64;
+// 63: one slot traded for Reese drift state — the F4's RAM is budgeted to
+// the byte (see the v0.2 no-boot saga before touching this).
+const int32_t kMaxNumGrains = 63;
 
 using namespace stmlib;
 
@@ -70,6 +72,9 @@ class GranularSamplePlayer {
     ars_gaps_.Init(0xC10D5EEDu);
     ars_countdown_ = 1.0f;
     ars_transpose_ = 0.0f;
+    ars_position_offset_ = 0.0f;
+    ars_pan_bias_ = 0.0f;
+    ars_reese_drift_ = 0.0f;
 #ifndef ARS_LEAN
     ars_bar_ = 0;
     ars_step_ = 0;
@@ -95,6 +100,26 @@ class GranularSamplePlayer {
       p = -1.0f;
       grain_rate_phasor_ = -1000.0f;
       ars_gaps_.set_loop(parameters.ars_loop);
+      if (parameters.ars_detune > 0.5f) {
+        // Phase divergence of a +/- detune/2 pair, in buffer-position
+        // units, wrapped every ~12 ms of offset: new grains sample the
+        // current drift, so the wrap is a beat-cycle skip, never a click.
+        const float ratio_delta = parameters.ars_detune * (0.5f * 5.78e-4f);
+        ars_reese_drift_ += ratio_delta * static_cast<float>(size)
+            / static_cast<float>(buffer->size());
+        if (parameters.freeze) {
+          // Frozen buffer = static oscillators: unwrapped drift is the
+          // exact free-running phase relationship. The canonical Reese.
+          if (ars_reese_drift_ > 0.5f) ars_reese_drift_ -= 1.0f;
+        } else {
+          // Live input: unbounded drift would read ever-staler audio, so
+          // wrap tightly; the beat comes from intra-grain detune instead.
+          const float wrap = 96.0f / static_cast<float>(buffer->size());
+          if (ars_reese_drift_ > wrap) ars_reese_drift_ -= 2.0f * wrap;
+        }
+      } else {
+        ars_reese_drift_ = 0.0f;
+      }
       // Self-heal: boot-time ADC ramp-up can hand us a zero density and an
       // infinite mean spacing; an accumulator poisoned by inf/NaN must
       // recover when the knobs do (stock's stateless rules did; hardware
@@ -207,12 +232,18 @@ class GranularSamplePlayer {
         }
 
         // Reese twins: every grain is secretly two, detuned half the spread
-        // each way around its chord tone. Long overlaps turn the pairs into
-        // the classic beating growl; costs one extra grain slot per event.
+        // each way. A real Reese's phase relationship NEVER resets, so the
+        // twins also carry an accumulated buffer-position drift — the offset
+        // two free-running detuned oscillators would have built up — and
+        // mirror pans. Without the drift, each pair restarts phase-aligned
+        // and you only ever hear the first fraction of a beat cycle
+        // (hardware pass, 2026-09-15).
         const bool twins = use_ars && parameters.ars_detune > 0.5f;
         const float base_transpose = ars_transpose_;
         if (twins) {
           ars_transpose_ = base_transpose + parameters.ars_detune * 0.005f;
+          ars_position_offset_ = ars_reese_drift_;
+          ars_pan_bias_ = 0.35f;
         }
         Grain* g = &grains_[index];
         ScheduleGrain(
@@ -230,6 +261,8 @@ class GranularSamplePlayer {
                   ? GRAIN_QUALITY_MEDIUM
                   : GRAIN_QUALITY_HIGH;
           ars_transpose_ = base_transpose - parameters.ars_detune * 0.005f;
+          ars_position_offset_ = -ars_reese_drift_;
+          ars_pan_bias_ = -0.35f;
           ScheduleGrain(
               &grains_[twin_index],
               parameters,
@@ -239,6 +272,8 @@ class GranularSamplePlayer {
               twin_quality);
         }
         ars_transpose_ = base_transpose;
+        ars_position_offset_ = 0.0f;
+        ars_pan_bias_ = 0.0f;
         grain_rate_phasor_ = 0.0f;
         seed_trigger = false;
       }
@@ -309,7 +344,9 @@ class GranularSamplePlayer {
       int32_t buffer_size,
       int32_t buffer_head,
       GrainQuality quality) {
-    float position = parameters.position;
+    float position = parameters.position + ars_position_offset_;
+    if (position > 1.0f) position -= 1.0f;
+    if (position < 0.0f) position += 1.0f;
     // Chord clouds: the scheduler leaves this grain's chord-tone transpose
     // (semitones) in ars_transpose_; 0 when harmony is off.
     float pitch = parameters.pitch + ars_transpose_;
@@ -317,7 +354,9 @@ class GranularSamplePlayer {
     float grain_size = Interpolate(lut_grain_size, parameters.size, 256.0f);
     float pitch_ratio = SemitonesToRatio(pitch);
     float inv_pitch_ratio = SemitonesToRatio(-pitch);
-    float pan = 0.5f + parameters.stereo_spread * (Random::GetFloat() - 0.5f);
+    float pan = 0.5f + ars_pan_bias_
+        + parameters.stereo_spread * (Random::GetFloat() - 0.5f);
+    CONSTRAIN(pan, 0.0f, 1.0f);
     float gain_l, gain_r;
     if (num_channels_ == 1) {
       gain_l = Interpolate(lut_sin, pan, 256.0f);
@@ -375,6 +414,9 @@ class GranularSamplePlayer {
   ArsGapGenerator ars_gaps_;
   float ars_countdown_;
   float ars_transpose_;
+  float ars_position_offset_;
+  float ars_pan_bias_;
+  float ars_reese_drift_;
 #ifndef ARS_LEAN
   int16_t ars_bar_;
   int16_t ars_step_;

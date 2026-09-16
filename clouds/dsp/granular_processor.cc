@@ -130,7 +130,7 @@ void GranularProcessor::ProcessGranular(
           parameters_.ars_character = 0.5f;
           parameters_.granular.window_shape = 0.8f;
         }
-        parameters_.ars_detune = parameters_.stereo_spread * 30.0f;
+        parameters_.ars_detune = parameters_.stereo_spread * 40.0f;
         if (parameters_.reverb < 0.05f) {
           parameters_.ars_harmony = 0;
           parameters_.ars_chord = 0.0f;

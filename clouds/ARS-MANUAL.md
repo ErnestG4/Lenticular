@@ -35,7 +35,7 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 | **PITCH** | Global transpose, stock (chord tones stack on top of it). |
 | **DENSITY** | Grain rate, full knob travel. No dead zone at noon; fully CCW is *very sparse* (~1 grain per 2 s floor), never silent. |
 | **TEXTURE** | **Timing personality** — the rigidity ladder: |
-| | · CCW→9 o'clock: **silk** — hyperuniform. Grains shimmer at even-but-never-mechanical spacing; the knob position sets jitter depth. The texture that cannot clump. |
+| | · CCW→9 o'clock: **silk** — hyperuniform, with the smoothest grain windows: this is the *cloud* zone, washes that cannot clump. Knob sets jitter depth. |
 | | · 9 o'clock→2 o'clock: **motif** — quasiperiodic (three-distance). Grains fall in patterns of at most three distinct spacings; the knob walks the Stern-Brocot path from a rigid 1/2 lock out to the golden ratio. Melodic scrubbing. |
 | | · 2 o'clock→CW: **loose** — Poisson. The classic random cloud; the stock-firmware feel lives here. |
 | **FREEZE** | Stock. Freeze + TEXTURE sweep is a tour of one buffer through three universes. |
@@ -59,6 +59,9 @@ PITCH, IN GAIN behave exactly as stock everywhere.
   off. A texture with no lumps — impossible on stock.
 - **Reese anything**: bass-ish input, SIZE past 3 o'clock, DENSITY high,
   page 2 to taste. Works on things that have no business being a Reese.
+- **Chord cloud** (the classic, harmonized): FREEZE something, SIZE past
+  3 o'clock, DENSITY high, TEXTURE fully CCW (silk), Harmony at a chord,
+  full wet. Grains at every chord tone overlap into one sustained billow.
 - **Chord drone**: any drone, Harmony at a major-family chord, TEXTURE
   silk, PITCH down an octave. A choir out of a sine.
 - **Replay riffing**: clock TRIG at bar rate; the cloud becomes a
@@ -80,6 +83,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Version
 
+v0.4 — silk billows: grain windows follow the timing personality
+(silk smoothest, motif articulate), overlap ceiling restored to stock reach.
 v0.3 — first sounding release (2026-09-15). v0.1 booted silent (boot-time
 ADC ramp poisoned the scheduler; fixed), v0.2 didn't boot (the author
 briefly believed CCM RAM was vacant; Émilie's audio buffer disagreed).

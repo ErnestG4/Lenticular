@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
   const float texture = argc > 12 ? atof(argv[12]) : 0.5f;
   const int trig_secs = argc > 13 ? atoi(argv[13]) : 0;
   const int freeze_after = argc > 14 ? atoi(argv[14]) : -1;
+  const float loop = argc > 15 ? atof(argv[15]) : 0.5f;
 
   FILE* fp_in = fopen(in_path, "rb");
   if (!fp_in) {
@@ -132,6 +133,7 @@ int main(int argc, char** argv) {
     p->ars_harmony = harmony;
     p->ars_chord = chord;
     p->ars_detune = detune;
+    p->ars_loop = loop;
 
     ShortFrame in[kBlockSize];
     ShortFrame out[kBlockSize];

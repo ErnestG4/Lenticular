@@ -38,7 +38,7 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 | | · CCW→9 o'clock: **silk** — hyperuniform, with the smoothest grain windows: this is the *cloud* zone, washes that cannot clump. Knob sets jitter depth. |
 | | · 9 o'clock→2 o'clock: **motif** — quasiperiodic (three-distance). Grains fall in patterns of at most three distinct spacings; the knob walks the Stern-Brocot path from a rigid 1/2 lock out to the golden ratio. Melodic scrubbing. |
 | | · 2 o'clock→4 o'clock: **loose** — Poisson. The classic random cloud; the stock-firmware feel lives here. |
-| | · 4 o'clock→CW: **chip** — a rigid grid cycling the chord voices in strict order: the Follin/demoscene arpeggio. DENSITY is the arp rate — audible arpeggiation when slow, the fused spectral chord-cloud illusion when fast. Needs Harmony up to speak. |
+| | · 4 o'clock→CW: **chip** — a rigid grid cycling the chord voices in strict order: the Follin/demoscene arpeggio. DENSITY is a musical arp clock, ~2.5 to ~57 notes/s (log): 9 o'clock ≈ a 5/s arp, 3 o'clock ≈ the classic 32/s run, the very top fuses into the spectral chord-cloud illusion. Needs Harmony up to speak. |
 | **FREEZE** | Stock. Freeze + TEXTURE sweep is a tour of one buffer through three universes. |
 | **TRIG in** | **Replay**: restarts the stored grain realization from the top — the *same* cloud every strike, phrase for phrase. Clock it and the cloud riffs. |
 

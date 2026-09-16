@@ -110,19 +110,25 @@ void GranularProcessor::ProcessGranular(
       //              CCW off, then the harmonic chord ladder.
       //   TRIG     = replay the stored realization.
       parameters_.granular.use_deterministic_seed = false;
-      parameters_.granular.overlap = 0.03f + parameters_.density * 0.92f;
-      parameters_.granular.window_shape = 0.6f;
+      parameters_.granular.overlap = 0.03f + parameters_.density * 0.96f;
       {
         const float t = parameters_.texture;
+        // Window character rides the timing personality: silk billows
+        // (smooth washes — this is where the classic "clouds" live), motif
+        // stays articulate (plucked figures), loose sits between
+        // (hardware pass 2026-09-15: fixed 0.6 windows starved the wash).
         if (t < 0.4f) {
           parameters_.ars_zone = 1;
           parameters_.ars_character = t * 2.5f;
+          parameters_.granular.window_shape = 1.0f;
         } else if (t < 0.75f) {
           parameters_.ars_zone = 2;
           parameters_.ars_character = (t - 0.4f) * 2.857f;
+          parameters_.granular.window_shape = 0.55f;
         } else {
           parameters_.ars_zone = 5;
           parameters_.ars_character = 0.5f;
+          parameters_.granular.window_shape = 0.8f;
         }
         parameters_.ars_detune = parameters_.stereo_spread * 30.0f;
         if (parameters_.reverb < 0.05f) {

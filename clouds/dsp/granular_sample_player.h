@@ -37,6 +37,8 @@
 #include "stmlib/dsp/units.h"
 #include "stmlib/utils/random.h"
 
+#include "clouds/dsp/ars_chords.h"
+#include "clouds/dsp/ars_scheduler.h"
 #include "clouds/dsp/audio_buffer.h"
 #include "clouds/dsp/frame.h"
 #include "clouds/dsp/grain.h"
@@ -65,6 +67,14 @@ class GranularSamplePlayer {
     num_grains_ = 0.0f;
     num_channels_ = num_channels;
     grain_size_hint_ = 1024.0f;
+    ars_gaps_.Init(0xC10D5EEDu);
+    ars_countdown_ = 1.0f;
+    ars_transpose_ = 0.0f;
+#ifndef ARS_LEAN
+    ars_bar_ = 0;
+    ars_step_ = 0;
+    ars_step_countdown_ = 1.0f;
+#endif
   }
   
   template<Resolution resolution>
@@ -77,7 +87,25 @@ class GranularSamplePlayer {
     float target_num_grains = max_num_grains_ * overlap;
     float p = target_num_grains / static_cast<float>(grain_size_hint_);
     float space_between_grains = grain_size_hint_ / target_num_grains;
-    if (parameters.granular.use_deterministic_seed) {
+    // ARS ladder scheduling replaces both stock decision rules: gaps come
+    // from the selected spacing statistics, scaled by the same mean spacing
+    // the density knob implies — the ladder changes character, not density.
+    const bool use_ars = parameters.ars_zone >= 0;
+    if (use_ars) {
+      p = -1.0f;
+      grain_rate_phasor_ = -1000.0f;
+      ars_gaps_.set_loop(parameters.ars_loop);
+      if (parameters.trigger) {
+        // Replay the stored realization: the same cloud every strike.
+        ars_gaps_.Replay();
+        ars_countdown_ = 1.0f;
+#ifndef ARS_LEAN
+        ars_step_ = 0;
+        ars_step_countdown_ = 1.0f;
+        ars_bar_ = 0;
+#endif
+      }
+    } else if (parameters.granular.use_deterministic_seed) {
       p = -1.0f;
     } else {
       grain_rate_phasor_ = -1000.0f;
@@ -93,7 +121,74 @@ class GranularSamplePlayer {
       bool seed_probabilistic = Random::GetFloat() < p
           && target_num_grains > num_grains_;
       bool seed_deterministic = grain_rate_phasor_ >= space_between_grains;
-      bool seed = seed_probabilistic || seed_deterministic || seed_trigger;
+      bool seed_ars = false;
+#ifndef ARS_LEAN
+      if (use_ars && parameters.ars_harmony == 2) {
+        // Riff mode: a Steps source. Grains fire on a swung 8-step grid,
+        // playing the selected riff transposed by the twelve-bar roots —
+        // the zone statistics stand aside; this is a groove, not a process.
+        ars_step_countdown_ -= 1.0f;
+        if (ars_step_countdown_ <= 0.0f) {
+          const float step = space_between_grains;
+          ars_step_countdown_ += (ars_step_ & 1)
+              ? 2.0f * step * (1.0f - ars::kRiffSwing)
+              : 2.0f * step * ars::kRiffSwing;
+          const int riff = static_cast<int>(
+              parameters.ars_chord * (ars::kNumRiffs - 1) + 0.5f);
+          const int16_t degree =
+              ars::kRiffs[riff][ars_step_ % ars::kRiffSteps];
+          ++ars_step_;
+          if (ars_step_ % ars::kRiffSteps == 0) {
+            ars_bar_ = static_cast<int16_t>((ars_bar_ + 1) % ars::kNumProgressionBars);
+          }
+          if (degree >= 0) {
+            ars_transpose_ = static_cast<float>(
+                ars::kTwelveBarRoots[ars_bar_] + degree) * 0.01f;
+            seed_ars = true;
+          }
+        }
+      } else if (use_ars) {
+#else
+      if (use_ars) {
+#endif  // ARS_LEAN
+        ars_countdown_ -= 1.0f;
+        if (ars_countdown_ <= 0.0f) {
+          // Advance the process whether or not a grain slot is free: a
+          // missed event thins the realization, it must not warp it.
+          const float gap = ars_gaps_.NextGap(
+              parameters.ars_zone, parameters.ars_character,
+              space_between_grains);
+          ars_countdown_ += gap;
+          seed_ars = true;
+
+          // Chord clouds: the gap statistics choose the voice (short gaps
+          // low, long gaps high — the gap melody, lifted to grains); the
+          // cents come from the table. Progressions advance one bar per
+          // gap-sum wrap, so bars breathe with the necklace.
+          if (parameters.ars_harmony > 0) {
+            const float gap_units = gap / space_between_grains;
+            int voice = static_cast<int>(ars_gaps_.last_voice_u() * 3.999f);
+            CONSTRAIN(voice, 0, 3);
+            const bool metallic = parameters.ars_harmony == 1;
+            const int n = metallic ? ars::kNumMetallicChords
+                                   : ars::kNumHarmonicChords;
+            float x = parameters.ars_chord * static_cast<float>(n - 1);
+            int chord = static_cast<int>(x + 0.5f);
+            CONSTRAIN(chord, 0, n - 1);
+            const int16_t cents = metallic
+                ? ars::kMetallicChords[chord][voice]
+                : ars::kHarmonicChords[chord][voice];
+            ars_transpose_ = static_cast<float>(cents) * 0.01f;
+            (void) gap_units;
+          } else {
+            ars_transpose_ = 0.0f;
+          }
+        }
+      } else {
+        ars_transpose_ = 0.0f;
+      }
+      bool seed = seed_probabilistic || seed_deterministic || seed_ars ||
+          seed_trigger;
       if (num_available_grains && seed) {
         --num_available_grains;
         int32_t index = available_grains_[num_available_grains];
@@ -103,7 +198,15 @@ class GranularSamplePlayer {
         } else {
           quality = GRAIN_QUALITY_HIGH;
         }
-        
+
+        // Reese twins: every grain is secretly two, detuned half the spread
+        // each way around its chord tone. Long overlaps turn the pairs into
+        // the classic beating growl; costs one extra grain slot per event.
+        const bool twins = use_ars && parameters.ars_detune > 0.5f;
+        const float base_transpose = ars_transpose_;
+        if (twins) {
+          ars_transpose_ = base_transpose + parameters.ars_detune * 0.005f;
+        }
         Grain* g = &grains_[index];
         ScheduleGrain(
             g,
@@ -112,6 +215,23 @@ class GranularSamplePlayer {
             buffer->size(),
             buffer->head() - size + t,
             quality);
+        if (twins && num_available_grains) {
+          --num_available_grains;
+          const int32_t twin_index = available_grains_[num_available_grains];
+          const GrainQuality twin_quality =
+              num_available_grains < num_midfi_grains_
+                  ? GRAIN_QUALITY_MEDIUM
+                  : GRAIN_QUALITY_HIGH;
+          ars_transpose_ = base_transpose - parameters.ars_detune * 0.005f;
+          ScheduleGrain(
+              &grains_[twin_index],
+              parameters,
+              t,
+              buffer->size(),
+              buffer->head() - size + t,
+              twin_quality);
+        }
+        ars_transpose_ = base_transpose;
         grain_rate_phasor_ = 0.0f;
         seed_trigger = false;
       }
@@ -183,7 +303,9 @@ class GranularSamplePlayer {
       int32_t buffer_head,
       GrainQuality quality) {
     float position = parameters.position;
-    float pitch = parameters.pitch;
+    // Chord clouds: the scheduler leaves this grain's chord-tone transpose
+    // (semitones) in ars_transpose_; 0 when harmony is off.
+    float pitch = parameters.pitch + ars_transpose_;
     float window_shape = parameters.granular.window_shape;
     float grain_size = Interpolate(lut_grain_size, parameters.size, 256.0f);
     float pitch_ratio = SemitonesToRatio(pitch);
@@ -243,6 +365,14 @@ class GranularSamplePlayer {
   float gain_normalization_;
   float grain_size_hint_;
   float grain_rate_phasor_;
+  ArsGapGenerator ars_gaps_;
+  float ars_countdown_;
+  float ars_transpose_;
+#ifndef ARS_LEAN
+  int16_t ars_bar_;
+  int16_t ars_step_;
+  float ars_step_countdown_;
+#endif
   
   Grain grains_[kMaxNumGrains];
   int32_t available_grains_[kMaxNumGrains];

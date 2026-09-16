@@ -53,6 +53,12 @@ void GranularProcessor::Init(
   num_channels_ = 2;
   low_fidelity_ = false;
   bypass_ = false;
+  parameters_.ars_zone = -1;      // stock scheduler unless a UI selects a zone
+  parameters_.ars_character = 0.5f;
+  parameters_.ars_harmony = 0;
+  parameters_.ars_chord = 0.0f;
+  parameters_.ars_detune = 0.0f;
+  parameters_.ars_loop = 0.5f;
   
   src_down_.Init();
   src_up_.Init();
@@ -93,19 +99,42 @@ void GranularProcessor::ProcessGranular(
   
   switch (playback_mode_) {
     case PLAYBACK_MODE_GRANULAR:
-      // In Granular mode, DENSITY is a meta parameter.
-      parameters_.granular.use_deterministic_seed = parameters_.density < 0.5f;
-      if (parameters_.density >= 0.53f) {
-        parameters_.granular.overlap = (parameters_.density - 0.53f) * 2.12f;
-      } else if (parameters_.density <= 0.47f) {
-        parameters_.granular.overlap = (0.47f - parameters_.density) * 2.12f;
-      } else {
-        parameters_.granular.overlap = 0.0f;
+      // ARS Cirrus mapping (2026-09-15, panel agreed with Will):
+      //   DENSITY  = grain rate, full travel (no noon split).
+      //   TEXTURE  = timing personality: silk (z1, character sweeps jitter)
+      //              -> motif (z2, character walks the Brocot path)
+      //              -> loose (Poisson; stock-dice feel lives here).
+      //   Blend p2 = Twins: Reese detune 0..30 cents; the same knob keeps
+      //              feeding stereo_spread, so the pairs widen as they beat.
+      //   Blend p4 = Harmony (was reverb — rack quorum voted it out):
+      //              CCW off, then the harmonic chord ladder.
+      //   TRIG     = replay the stored realization.
+      parameters_.granular.use_deterministic_seed = false;
+      parameters_.granular.overlap = parameters_.density * 0.95f;
+      parameters_.granular.window_shape = 0.6f;
+      {
+        const float t = parameters_.texture;
+        if (t < 0.4f) {
+          parameters_.ars_zone = 1;
+          parameters_.ars_character = t * 2.5f;
+        } else if (t < 0.75f) {
+          parameters_.ars_zone = 2;
+          parameters_.ars_character = (t - 0.4f) * 2.857f;
+        } else {
+          parameters_.ars_zone = 5;
+          parameters_.ars_character = 0.5f;
+        }
+        parameters_.ars_detune = parameters_.stereo_spread * 30.0f;
+        if (parameters_.reverb < 0.05f) {
+          parameters_.ars_harmony = 0;
+          parameters_.ars_chord = 0.0f;
+        } else {
+          parameters_.ars_harmony = 3;
+          parameters_.ars_chord = (parameters_.reverb - 0.05f) * (1.0f / 0.95f);
+        }
+        parameters_.reverb = 0.0f;  // the page is harmony's now
       }
-      // And TEXTURE too.
-      parameters_.granular.window_shape = parameters_.texture < 0.75f
-          ? parameters_.texture * 1.333f : 1.0f;
-  
+
       if (resolution() == 8) {
         player_.Play(buffer_8_, parameters_, &output[0].l, size);
       } else {

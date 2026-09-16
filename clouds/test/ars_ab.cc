@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
   const float feedback = argc > 11 ? atof(argv[11]) : 0.0f;
   const float texture = argc > 12 ? atof(argv[12]) : 0.5f;
   const int trig_secs = argc > 13 ? atoi(argv[13]) : 0;
+  const int freeze_after = argc > 14 ? atoi(argv[14]) : -1;
 
   FILE* fp_in = fopen(in_path, "rb");
   if (!fp_in) {
@@ -108,7 +109,8 @@ int main(int argc, char** argv) {
     p->trigger = trig_secs > 0 &&
         (sample_clock % (kSampleRate * trig_secs)) < kBlockSize;
     sample_clock += kBlockSize;
-    p->freeze = false;
+    p->freeze = freeze_after >= 0 &&
+        sample_clock >= static_cast<size_t>(freeze_after) * kSampleRate;
     p->position = 0.2f;
     p->size = size_knob;
     p->pitch = 0.0f;
@@ -124,7 +126,7 @@ int main(int argc, char** argv) {
     p->feedback = feedback;
     p->dry_wet = 1.0f;
     p->reverb = 0.0f;
-    p->stereo_spread = 0.3f;
+    p->stereo_spread = detune / 40.0f;  // firmware maps spread->detune
     p->ars_zone = zone >= 0 ? zone : -1;
     p->ars_character = character;
     p->ars_harmony = harmony;

@@ -199,11 +199,21 @@ class GranularSamplePlayer {
 #endif  // ARS_LEAN
         ars_countdown_ -= 1.0f;
         if (ars_countdown_ <= 0.0f) {
+          // CHIP (zone 0) keeps musical time, not scheduler time: DENSITY
+          // is a log arp clock, ~2.5..57 notes/s (slow arp -> "wep wep
+          // wep wep" -> Spectrum frame-rate fusion at the very top).
+          // Everything else derives spacing from the overlap model.
+          float ars_spacing = space_between_grains;
+          if (parameters.ars_zone == 0) {
+            const float rate_hz =
+                2.5f * SemitonesToRatio(parameters.density * 54.2f);
+            ars_spacing = 32000.0f / rate_hz;
+          }
           // Advance the process whether or not a grain slot is free: a
           // missed event thins the realization, it must not warp it.
           const float gap = ars_gaps_.NextGap(
               parameters.ars_zone, parameters.ars_character,
-              space_between_grains);
+              ars_spacing);
           ars_countdown_ += gap;
           seed_ars = true;
 #ifdef TEST

@@ -37,7 +37,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 | **TEXTURE** | **Timing personality** — the rigidity ladder: |
 | | · CCW→9 o'clock: **silk** — hyperuniform, with the smoothest grain windows: this is the *cloud* zone, washes that cannot clump. Knob sets jitter depth. |
 | | · 9 o'clock→2 o'clock: **motif** — quasiperiodic (three-distance). Grains fall in patterns of at most three distinct spacings; the knob walks the Stern-Brocot path from a rigid 1/2 lock out to the golden ratio. Melodic scrubbing. |
-| | · 2 o'clock→CW: **loose** — Poisson. The classic random cloud; the stock-firmware feel lives here. |
+| | · 2 o'clock→4 o'clock: **loose** — Poisson. The classic random cloud; the stock-firmware feel lives here. |
+| | · 4 o'clock→CW: **chip** — a rigid grid cycling the chord voices in strict order: the Follin/demoscene arpeggio. DENSITY is the arp rate — audible arpeggiation when slow, the fused spectral chord-cloud illusion when fast. Needs Harmony up to speak. |
 | **FREEZE** | Stock. Freeze + TEXTURE sweep is a tour of one buffer through three universes. |
 | **TRIG in** | **Replay**: restarts the stored grain realization from the top — the *same* cloud every strike, phrase for phrase. Clock it and the cloud riffs. |
 
@@ -69,6 +70,10 @@ PITCH, IN GAIN behave exactly as stock everywhere.
   bones, new flesh.
 - **Feedback motif echo**: motif zone + page 3 around 0.5 — the grains'
   quasiperiodic pattern prints into the feedback path and compounds.
+- **The beeper returns**: TEXTURE fully CW (chip), Harmony at m7 or m11,
+  DENSITY around 9 o'clock for a slow demoscene arp of whatever you feed
+  it — then sweep DENSITY up and hear the arp fuse into a chord cloud,
+  exactly the trick the ZX beeper drivers played on the ear.
 
 ## Notes, honestly
 
@@ -83,6 +88,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Version
 
+v0.6 — CHIP zone: the Follin arp comes to Clouds (TEXTURE top).
+v0.5 — continuous-phase Reese (frozen = exact).
 v0.4 — silk billows: grain windows follow the timing personality
 (silk smoothest, motif articulate), overlap ceiling restored to stock reach.
 v0.3 — first sounding release (2026-09-15). v0.1 booted silent (boot-time

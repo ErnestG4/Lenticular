@@ -95,6 +95,13 @@ class GranularSamplePlayer {
       p = -1.0f;
       grain_rate_phasor_ = -1000.0f;
       ars_gaps_.set_loop(parameters.ars_loop);
+      // Self-heal: boot-time ADC ramp-up can hand us a zero density and an
+      // infinite mean spacing; an accumulator poisoned by inf/NaN must
+      // recover when the knobs do (stock's stateless rules did; hardware
+      // pass 2026-09-15: eternal silence at full wet).
+      if (!(ars_countdown_ >= 0.0f && ars_countdown_ < 65536.0f)) {
+        ars_countdown_ = 1.0f;
+      }
       if (parameters.trigger) {
         // Replay the stored realization: the same cloud every strike.
         ars_gaps_.Replay();

@@ -98,8 +98,12 @@ class ArsGapGenerator {
       gap = GammaGap(u, ZoneK(zone, character));
       voice_u_ = u;
     }
-    const float samples = gap * mean;
-    return samples < 1.0f ? 1.0f : samples;
+    float samples = gap * mean;
+    // Cap the wait: a near-zero density means a huge mean spacing, and an
+    // unbounded (or inf) gap would poison the caller's accumulator.
+    if (!(samples >= 1.0f)) samples = 1.0f;      // also catches NaN
+    if (samples > 65535.0f) samples = 65535.0f;  // ~2 s at 32 kHz
+    return samples;
   }
 
  private:

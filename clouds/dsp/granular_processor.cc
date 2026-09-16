@@ -103,7 +103,10 @@ void GranularProcessor::ProcessGranular(
       //   DENSITY  = grain rate, full travel (no noon split).
       //   TEXTURE  = timing personality: silk (z1, character sweeps jitter)
       //              -> motif (z2, character walks the Brocot path)
-      //              -> loose (Poisson; stock-dice feel lives here).
+      //              -> loose (Poisson; stock-dice feel lives here)
+      //              -> CHIP (z0, rigid grid + round-robin chord voices:
+      //                 the Follin/demoscene arp — audible arpeggio at low
+      //                 DENSITY, fused spectral chord-cloud at high).
       //   Blend p2 = Twins: Reese detune 0..30 cents; the same knob keeps
       //              feeding stereo_spread, so the pairs widen as they beat.
       //   Blend p4 = Harmony (was reverb — rack quorum voted it out):
@@ -117,18 +120,22 @@ void GranularProcessor::ProcessGranular(
         // (smooth washes — this is where the classic "clouds" live), motif
         // stays articulate (plucked figures), loose sits between
         // (hardware pass 2026-09-15: fixed 0.6 windows starved the wash).
-        if (t < 0.4f) {
+        if (t < 0.38f) {
           parameters_.ars_zone = 1;
-          parameters_.ars_character = t * 2.5f;
+          parameters_.ars_character = t * 2.63f;
           parameters_.granular.window_shape = 1.0f;
-        } else if (t < 0.75f) {
+        } else if (t < 0.68f) {
           parameters_.ars_zone = 2;
-          parameters_.ars_character = (t - 0.4f) * 2.857f;
+          parameters_.ars_character = (t - 0.38f) * 3.33f;
           parameters_.granular.window_shape = 0.55f;
-        } else {
+        } else if (t < 0.88f) {
           parameters_.ars_zone = 5;
           parameters_.ars_character = 0.5f;
           parameters_.granular.window_shape = 0.8f;
+        } else {
+          parameters_.ars_zone = 0;  // CHIP: the beeper returns
+          parameters_.ars_character = (t - 0.88f) * 8.33f;
+          parameters_.granular.window_shape = 0.4f;
         }
         parameters_.ars_detune = parameters_.stereo_spread * 40.0f;
         if (parameters_.reverb < 0.05f) {

@@ -61,3 +61,11 @@ __pycache__/
 # submit`, not committed here). The reference packages under packages/ stay
 # tracked; only the community namespace is ignored.
 alt_firmwares/plaits_lab_sdk/packages/community/
+
+# --- ars-worklog branch: keep our shipped engines in history ---
+!alt_firmwares/plaits_lab_sdk/packages/community/
+# local build artifacts
+/ars_ab
+/clouds_test
+*.plaits-package*/
+alt_firmwares/plaits_lab_sdk/qemu/cycles_plugin_linux.so

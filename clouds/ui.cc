@@ -69,6 +69,11 @@ void Ui::Init(
         static_cast<BlendParameter>(i),
         static_cast<float>(state.blend_value[i]) / 255.0f);
   }
+  // ars_loop rides the padding byte, encoded 1..251 (0 = never saved).
+  if (state.padding >= 1 && state.padding <= 251) {
+    cv_scaler_->set_ars_loop(
+        static_cast<float>(state.padding - 1) / 250.0f);
+  }
   cv_scaler_->UnlockBlendKnob();
 }
 
@@ -81,12 +86,17 @@ void Ui::SaveState() {
     state->blend_value[i] = static_cast<uint8_t>(
         cv_scaler_->blend_value(static_cast<BlendParameter>(i)) * 255.0f);
   }
+  state->padding = static_cast<uint8_t>(
+      1.5f + cv_scaler_->ars_loop() * 250.0f);
   settings_->Save();
 }
 
 void Ui::Poll() {
   system_clock.Tick();
   switches_.Debounce();
+
+  // Hold MODE + turn DENSITY = loop/fray (hidden parameter, pickup).
+  cv_scaler_->set_loop_edit(switches_.pressed(SWITCH_MODE));
   
   for (uint8_t i = 0; i < kNumSwitches; ++i) {
     if (switches_.just_pressed(i)) {
@@ -245,6 +255,11 @@ void Ui::OnSwitchReleased(const Event& e) {
       break;
 
     case SWITCH_MODE:
+      if (cv_scaler_->loop_edit_engaged()) {
+        // The hold was a loop/fray edit: swallow the menu action.
+        SaveState();
+        break;
+      }
       if (e.data >= kVeryLongPressDuration) {
         mode_ = UI_MODE_PLAYBACK_MODE;
       } else if (e.data >= kLongPressDuration) {

@@ -178,6 +178,9 @@ class GranularProcessor {
   Correlator correlator_;
   
   GranularSamplePlayer player_;
+  float onset_fast_;
+  float onset_slow_;
+  int32_t onset_refractory_;
   WSOLASamplePlayer ws_player_;
   LoopingSamplePlayer looper_;
   PhaseVocoder phase_vocoder_;

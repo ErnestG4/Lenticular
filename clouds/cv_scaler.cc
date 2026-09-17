@@ -74,6 +74,11 @@ void CvScaler::Init(CalibrationData* calibration_data) {
   fill(&blend_mod_[0], &blend_mod_[BLEND_PARAMETER_LAST], 0.0f);
   previous_blend_knob_value_ = 0.0f;
   blend_parameter_ = BLEND_PARAMETER_DRY_WET;
+  loop_edit_ = false;
+  loop_edit_engaged_ = false;
+  loop_edit_start_pot_ = 0.0f;
+  loop_edit_locked_density_ = 0.5f;
+  ars_loop_value_ = 0.5f;
   blend_knob_quantized_ = -1.0f;
   blend_knob_touched_ = false;
   
@@ -146,7 +151,20 @@ void CvScaler::Read(Parameters* parameters) {
 
   float density = smoothed_adc_value_[ADC_DENSITY_POTENTIOMETER_CV];
   CONSTRAIN(density, 0.0f, 1.0f);
-  parameters->density = density;
+  if (loop_edit_) {
+    const float moved = density - loop_edit_start_pot_;
+    if (moved > 0.03f || moved < -0.03f) {
+      loop_edit_engaged_ = true;
+    }
+    if (loop_edit_engaged_) {
+      ars_loop_value_ = density;
+    }
+    parameters->density = loop_edit_locked_density_;
+  } else {
+    loop_edit_locked_density_ = density;
+    parameters->density = density;
+  }
+  parameters->ars_loop = ars_loop_value_;
 
   parameters->size = smoothed_adc_value_[ADC_SIZE_POTENTIOMETER];
   parameters->size -= smoothed_adc_value_[ADC_SIZE_CV];

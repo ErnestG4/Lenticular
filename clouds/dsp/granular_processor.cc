@@ -59,6 +59,8 @@ void GranularProcessor::Init(
   parameters_.ars_chord = 0.0f;
   parameters_.ars_detune = 0.0f;
   parameters_.ars_loop = 0.5f;
+  onset_fast_ = onset_slow_ = 0.0f;
+  onset_refractory_ = 0;
   
   src_down_.Init();
   src_up_.Init();
@@ -85,6 +87,26 @@ void GranularProcessor::ProcessGranular(
   // At the exception of the spectral mode, all modes require the incoming
   // audio signal to be written to the recording buffer.
   if (playback_mode_ != PLAYBACK_MODE_SPECTRAL) {
+    if (playback_mode_ == PLAYBACK_MODE_GRANULAR && !parameters_.freeze) {
+      // Transient detection at the write head feeds the player's onset
+      // map (fast/slow envelope ratio, 50 ms refractory). Frozen buffers
+      // keep their map — the hits don't move.
+      const int32_t buffer_length = resolution() == 8
+          ? buffer_8_[0].size() : buffer_16_[0].size();
+      const int32_t head = resolution() == 8
+          ? buffer_8_[0].head() : buffer_16_[0].head();
+      for (size_t i = 0; i < size; ++i) {
+        const float rectified = fabsf(input[i].l) + fabsf(input[i].r);
+        onset_fast_ += 0.03f * (rectified - onset_fast_);
+        onset_slow_ += 0.0008f * (rectified - onset_slow_);
+        if (onset_refractory_ > 0) {
+          --onset_refractory_;
+        } else if (onset_fast_ > 2.5f * onset_slow_ + 0.02f) {
+          player_.NoteOnset(head + static_cast<int32_t>(i), buffer_length);
+          onset_refractory_ = 1600;
+        }
+      }
+    }
     const float* input_samples = &input[0].l;
     for (int32_t i = 0; i < num_channels_; ++i) {
       if (resolution() == 8) {

@@ -52,14 +52,24 @@
 
 namespace clouds {
 
-// 63: one slot traded for Reese drift state — the F4's RAM is budgeted to
-// the byte (see the v0.2 no-boot saga before touching this).
-const int32_t kMaxNumGrains = 63;
+// 62: two slots traded for ARS state (Reese drift + onset map). The F4's
+// RAM is budgeted to the byte — see the v0.2 no-boot saga before touching.
+const int32_t kMaxNumGrains = 62;
 
 using namespace stmlib;
 
 class GranularSamplePlayer {
  public:
+  // Onset map: the processor reports detected input transients (buffer
+  // ring positions); rhythmic zones snap grain starts to the nearest one,
+  // so POSITION means "which hit" instead of "arbitrary tape spot".
+  void NoteOnset(int32_t position, int32_t buffer_size) {
+    while (position >= buffer_size) position -= buffer_size;
+    while (position < 0) position += buffer_size;
+    onset_ring_[onset_write_] = static_cast<uint16_t>(position >> 2);
+    onset_write_ = static_cast<uint8_t>((onset_write_ + 1) % kNumOnsets);
+  }
+
 #ifdef TEST
   // Falsification tap: exact ARS spawn times (sample index), so the
   // statistics are verified through the real scheduler path instead of
@@ -80,6 +90,8 @@ class GranularSamplePlayer {
     num_channels_ = num_channels;
     grain_size_hint_ = 1024.0f;
     ars_gaps_.Init(0xC10D5EEDu);
+    for (int i = 0; i < kNumOnsets; ++i) onset_ring_[i] = 0xFFFF;
+    onset_write_ = 0;
     ars_countdown_ = 1.0f;
     ars_transpose_ = 0.0f;
     ars_position_offset_ = 0.0f;
@@ -428,6 +440,29 @@ class GranularSamplePlayer {
     int32_t size = static_cast<int32_t>(grain_size) & ~1;
     int32_t start = buffer_head - static_cast<int32_t>(
         position * available + eaten_by_play_head);
+    // Onset snap (the 2D lift, musical form): rhythmic zones move the
+    // grain start to the nearest detected transient — motif re-orders the
+    // material's own attacks, chip arpeggiates slices of the playing.
+    // Silk and loose stay free: washes must not lump onto hits.
+    if (parameters.ars_zone == 0 || parameters.ars_zone == 2) {
+      int32_t best_distance = buffer_size >> 3;
+      int32_t best_start = -1;
+      for (int i = 0; i < kNumOnsets; ++i) {
+        if (onset_ring_[i] == 0xFFFF) continue;
+        const int32_t candidate = static_cast<int32_t>(onset_ring_[i]) << 2;
+        int32_t d = start - candidate;
+        while (d > buffer_size / 2) d -= buffer_size;
+        while (d < -buffer_size / 2) d += buffer_size;
+        if (d < 0) d = -d;
+        if (d < best_distance) {
+          best_distance = d;
+          best_start = candidate;
+        }
+      }
+      if (best_start >= 0) {
+        start = best_start - 128;  // 4 ms pre-attack pad
+      }
+    }
     grain->Start(
         pre_delay,
         buffer_size,
@@ -456,6 +491,9 @@ class GranularSamplePlayer {
   float ars_pan_bias_;
   float ars_reese_drift_;
   float ars_last_pitch_;
+  static const int kNumOnsets = 16;
+  uint16_t onset_ring_[kNumOnsets];
+  uint8_t onset_write_;
 #ifndef ARS_LEAN
   int16_t ars_bar_;
   int16_t ars_step_;

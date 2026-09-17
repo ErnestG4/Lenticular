@@ -101,6 +101,20 @@ class CvScaler {
     previous_blend_knob_value_ = -1.0f;
   }
   
+  // Loop/fray hidden parameter: while the MODE button is held, the
+  // DENSITY pot edits ars_loop (with pickup — nothing changes until the
+  // pot moves), and density itself stays locked at its held value.
+  inline void set_loop_edit(bool active) {
+    if (active && !loop_edit_) {
+      loop_edit_start_pot_ = smoothed_adc_value_[ADC_DENSITY_POTENTIOMETER_CV];
+      loop_edit_engaged_ = false;
+    }
+    loop_edit_ = active;
+  }
+  inline bool loop_edit_engaged() const { return loop_edit_engaged_; }
+  inline float ars_loop() const { return ars_loop_value_; }
+  inline void set_ars_loop(float value) { ars_loop_value_ = value; }
+
   inline BlendParameter blend_parameter() const {
     return blend_parameter_;
   }
@@ -135,6 +149,11 @@ class CvScaler {
   float note_;
   
   BlendParameter blend_parameter_;
+  bool loop_edit_;
+  bool loop_edit_engaged_;
+  float loop_edit_start_pot_;
+  float loop_edit_locked_density_;
+  float ars_loop_value_;
   float blend_[BLEND_PARAMETER_LAST];
   float blend_mod_[BLEND_PARAMETER_LAST];
   float previous_blend_knob_value_;

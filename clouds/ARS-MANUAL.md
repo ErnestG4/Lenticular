@@ -30,7 +30,7 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 | Control | Function |
 |---|---|
-| **POSITION** | Buffer position, stock. |
+| **POSITION** | Buffer position. In the **motif and chip zones** grains snap to the nearest detected transient of your material — POSITION means *which hit*, not which tape-spot. Silk and loose stay free (washes must not lump). |
 | **SIZE** | Grain size, stock. |
 | **PITCH** | Global transpose, stock (chord tones stack on top of it). |
 | **DENSITY** | Grain rate, full knob travel. No dead zone at noon; fully CCW is *very sparse* (~1 grain per 2 s floor), never silent. |
@@ -39,7 +39,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 | | · 9 o'clock→2 o'clock: **motif** — quasiperiodic (three-distance). Grains fall in patterns of at most three distinct spacings; the knob walks the Stern-Brocot path from a rigid 1/2 lock out to the golden ratio. Melodic scrubbing. |
 | | · 2 o'clock→4 o'clock: **loose** — Poisson. The classic random cloud; the stock-firmware feel lives here. |
 | | · 4 o'clock→CW: **chip** — a rigid grid cycling the chord voices in strict order: the Follin/demoscene arpeggio. DENSITY is a musical arp clock, ~2.5 to ~57 notes/s (log): 9 o'clock ≈ a 5/s arp, 3 o'clock ≈ the classic 32/s run, the very top fuses into the spectral chord-cloud illusion. Needs Harmony up to speak. |
-| **FREEZE** | Stock. Freeze + TEXTURE sweep is a tour of one buffer through three universes. |
+| **FREEZE** | Stock. Freeze + TEXTURE sweep is a tour of one buffer through four universes. |
+| **hold MODE + DENSITY** | **Loop/fray** (hidden, with pickup): CCW tightens the replayed realization to an 8-gap riff, noon = stock 32, CW frays it with fresh draws toward full freerun. Saved across power. |
 | **TRIG in** | **Replay**: restarts the stored grain realization from the top — the *same* cloud every strike, phrase for phrase. Clock it and the cloud riffs. |
 
 ## Blend pages (blend button cycles, knob sets)
@@ -70,6 +71,9 @@ PITCH, IN GAIN behave exactly as stock everywhere.
   bones, new flesh.
 - **Feedback motif echo**: motif zone + page 3 around 0.5 — the grains'
   quasiperiodic pattern prints into the feedback path and compounds.
+- **Chop shop**: drums or riffs in, motif zone, DENSITY ~noon — the
+  firmware re-orders your own hits into quasiperiodic figures. Chip zone
+  instead: your hits become the arp material, phrase-locked to V/Oct.
 - **The beeper returns**: TEXTURE fully CW (chip), Harmony at m7 or m11,
   DENSITY around 9 o'clock for a slow demoscene arp of whatever you feed
   it — then sweep DENSITY up and hear the arp fuse into a chord cloud,
@@ -90,6 +94,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Version
 
+v0.7 — onset-aware POSITION (motif/chip snap to your transients) +
+loop/fray on hold-MODE+DENSITY (saved).
 v0.6 — CHIP zone: the Follin arp comes to Clouds (TEXTURE top).
 v0.5 — continuous-phase Reese (frozen = exact).
 v0.4 — silk billows: grain windows follow the timing personality

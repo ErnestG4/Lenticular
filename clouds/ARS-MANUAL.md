@@ -1,6 +1,6 @@
-# Cirrus ARS — alternative firmware for Mutable Instruments Clouds
+# Lenticular — alternative firmware for Mutable Instruments Clouds
 
-*(working title — the real name is still being played into existence)*
+*Named for the cloud that stands still while the air moves through it.*
 
 A granular scheduler rebuilt around **spacing statistics**. Every granular
 engine ever shipped schedules grains at one of two points: the metronome or
@@ -81,9 +81,9 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Notes, honestly
 
-- The grain realization loops every 32 events; TRIG replays it from the
-  top. (Loop length / fray-to-random / new-seed gestures exist in the
-  engine but have no panel home yet — future version.)
+- The grain realization loops (hold MODE + DENSITY sets length/fray);
+  TRIG replays it from the top. A reseed gesture exists in the engine
+  but has no panel home yet — future version.
 - There is deliberately no internal riff engine: **V/Oct is the riff
   engine.** Sequence the pitch input — chords and the chip arp transpose
   relatively, and in the chip zone a note change restarts the arp at the
@@ -94,8 +94,8 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Version
 
-v0.7 — onset-aware POSITION (motif/chip snap to your transients) +
-loop/fray on hold-MODE+DENSITY (saved).
+v0.7 — **named Lenticular** · onset-aware POSITION (motif/chip snap to
+your transients) + loop/fray on hold-MODE+DENSITY (saved).
 v0.6 — CHIP zone: the Follin arp comes to Clouds (TEXTURE top).
 v0.5 — continuous-phase Reese (frozen = exact).
 v0.4 — silk billows: grain windows follow the timing personality

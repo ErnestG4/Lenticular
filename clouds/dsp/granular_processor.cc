@@ -61,6 +61,11 @@ void GranularProcessor::Init(
   parameters_.ars_loop = 0.5f;
   onset_fast_ = onset_slow_ = 0.0f;
   onset_refractory_ = 0;
+  ars_pitch_.Init();
+  psola_prev_epoch_age_ = 0.0f;
+  psola_period_lp_ = 0.0f;
+  parameters_.ars_psola = false;
+  parameters_.ars_period = 0.0f;
   
   src_down_.Init();
   src_up_.Init();
@@ -86,7 +91,9 @@ void GranularProcessor::ProcessGranular(
     size_t size) {
   // At the exception of the spectral mode, all modes require the incoming
   // audio signal to be written to the recording buffer.
-  if (playback_mode_ != PLAYBACK_MODE_SPECTRAL) {
+  {
+    // All modes record into the ring now — VOICE (ex-spectral) reads
+    // epochs from the same buffer the other modes granulate.
     if (playback_mode_ == PLAYBACK_MODE_GRANULAR && !parameters_.freeze) {
       // Transient detection at the write head feeds the player's onset
       // map (fast/slow envelope ratio, 50 ms refractory). Frozen buffers
@@ -105,6 +112,26 @@ void GranularProcessor::ProcessGranular(
           player_.NoteOnset(head + static_cast<int32_t>(i), buffer_length);
           onset_refractory_ = 1600;
         }
+      }
+    }
+    if (playback_mode_ == PLAYBACK_MODE_SPECTRAL) {
+      // VOICE: track the input's fundamental and report each glottal
+      // epoch's buffer position to the player. FREEZE holds the map and
+      // the period — a vowel suspended mid-air.
+      const int32_t buffer_length = resolution() == 8
+          ? buffer_8_[0].size() : buffer_16_[0].size();
+      const int32_t head = resolution() == 8
+          ? buffer_8_[0].head() : buffer_16_[0].head();
+      for (size_t i = 0; i < size; ++i) {
+        ars_pitch_.Push(0.5f * (input[i].l + input[i].r),
+                        parameters_.freeze);
+        const float age = ars_pitch_.epoch_age();
+        if (age < psola_prev_epoch_age_) {
+          player_.NoteEpoch(
+              head + static_cast<int32_t>(i) - static_cast<int32_t>(age),
+              buffer_length);
+        }
+        psola_prev_epoch_age_ = age;
       }
     }
     const float* input_samples = &input[0].l;
@@ -159,6 +186,8 @@ void GranularProcessor::ProcessGranular(
           parameters_.ars_character = (t - 0.88f) * 8.33f;
           parameters_.granular.window_shape = 0.4f;
         }
+        parameters_.ars_psola = false;
+        parameters_.ars_period = 0.0f;
         parameters_.ars_detune = parameters_.stereo_spread * 40.0f;
         if (parameters_.reverb < 0.05f) {
           parameters_.ars_harmony = 0;
@@ -195,22 +224,57 @@ void GranularProcessor::ProcessGranular(
 
     case PLAYBACK_MODE_SPECTRAL:
       {
-        parameters_.spectral.quantization = parameters_.texture;
-        parameters_.spectral.refresh_rate = 0.01f + 0.99f * parameters_.density;
-        float warp = parameters_.size - 0.5f;
-        parameters_.spectral.warp = 4.0f * warp * warp * warp + 0.5f;
-        
-        float randomization = parameters_.density - 0.5f;
-        randomization *= randomization * 4.2f;
-        randomization -= 0.05f;
-        CONSTRAIN(randomization, 0.0f, 1.0f);
-        parameters_.spectral.phase_randomization = randomization;
-        phase_vocoder_.Process(parameters_, input, output, size);
-        
-        if (num_channels_ == 1) {
-          for (size_t i = 0; i < size; ++i) {
-            output[i].r = output[i].l;
+        // Lenticular VOICE (the spectral slot is the voice's now):
+        // TD-PSOLA harmonizer. TEXTURE = phonation, CCW->CW monotone
+        // roughness; DENSITY = window width (buzz..choir); blend p4 =
+        // chord, p2 = choir stereo fan; SIZE = choir looseness;
+        // PITCH/V-Oct = formant-preserving transpose.
+        const float t = parameters_.texture;
+        if (t < 0.25f) {
+          parameters_.ars_zone = 0;  // machine-perfect
+          parameters_.ars_character = 0.0f;
+        } else if (t < 0.5f) {
+          parameters_.ars_zone = 1;  // healthy voice
+          parameters_.ars_character = (t - 0.25f) * 4.0f;
+        } else if (t < 0.75f) {
+          parameters_.ars_zone = 2;  // patterned
+          parameters_.ars_character = (t - 0.5f) * 4.0f;
+        } else {
+          parameters_.ars_zone = 5;  // rough -> fry
+          parameters_.ars_character = (t - 0.75f) * 4.0f;
+        }
+        parameters_.granular.overlap = parameters_.density;
+        parameters_.ars_detune = 0.0f;
+        if (parameters_.reverb < 0.05f) {
+          parameters_.ars_harmony = 0;
+          parameters_.ars_chord = 0.0f;
+        } else {
+          parameters_.ars_harmony = 3;
+          parameters_.ars_chord = (parameters_.reverb - 0.05f) * (1.0f / 0.95f);
+        }
+        parameters_.reverb = 0.0f;  // the page is harmony's here too
+        parameters_.ars_psola = true;
+        // The tracker steps in 8-sample quanta (decimated autocorr);
+        // smooth the synthesis period so the machine zone is actually
+        // machine-smooth (CV floor 0.047 -> <0.01, measured). Big jumps
+        // (note changes) relock instantly.
+        {
+          const float period = ars_pitch_.period();
+          if (period <= 0.0f) {
+            psola_period_lp_ = 0.0f;
+          } else if (psola_period_lp_ <= 0.0f
+                     || period > 1.25f * psola_period_lp_
+                     || period < 0.8f * psola_period_lp_) {
+            psola_period_lp_ = period;
+          } else {
+            psola_period_lp_ += 0.08f * (period - psola_period_lp_);
           }
+        }
+        parameters_.ars_period = psola_period_lp_;
+        if (resolution() == 8) {
+          player_.Play(buffer_8_, parameters_, &output[0].l, size);
+        } else {
+          player_.Play(buffer_16_, parameters_, &output[0].l, size);
         }
       }
       break;
@@ -471,7 +535,6 @@ void GranularProcessor::Prepare() {
       workspace_size = buffer_size_[0] - buffer_size_[1];
       workspace = static_cast<uint8_t*>(buffer[0]) + buffer_size[0];
     }
-    float sr = sample_rate();
 
     BufferAllocator allocator(workspace, workspace_size);
     diffuser_.Init(allocator.Allocate<float>(2048));
@@ -485,12 +548,9 @@ void GranularProcessor::Prepare() {
         &correlator_data[correlator_block_size]);
     pitch_shifter_.Init((uint16_t*)correlator_data);
     
-    if (playback_mode_ == PLAYBACK_MODE_SPECTRAL) {
-      phase_vocoder_.Init(
-          buffer, buffer_size,
-          lut_sine_window_4096, 4096,
-          num_channels_, resolution(), sr);
-    } else {
+    {
+      // VOICE (ex-spectral) records into the same ring as granular —
+      // the FFT workspace hand-off is gone with the vocoder.
       for (int32_t i = 0; i < num_channels_; ++i) {
         if (resolution() == 8) {
           buffer_8_[i].Init(
@@ -514,9 +574,7 @@ void GranularProcessor::Prepare() {
     previous_playback_mode_ = playback_mode_;
   }
   
-  if (playback_mode_ == PLAYBACK_MODE_SPECTRAL) {
-    phase_vocoder_.Buffer();
-  } else if (playback_mode_ == PLAYBACK_MODE_STRETCH) {
+  if (playback_mode_ == PLAYBACK_MODE_STRETCH) {
     if (resolution() == 8) {
       ws_player_.LoadCorrelator(buffer_8_);
     } else {

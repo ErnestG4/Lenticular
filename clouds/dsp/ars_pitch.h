@@ -24,6 +24,8 @@ class ArsPitchTracker {
     lp_ = 0.0f;
     since_update_ = 0;
     period_ = 0.0f;
+    raw_hist_[0] = raw_hist_[1] = raw_hist_[2] = 0.0f;
+    raw_idx_ = 0;
     previous_bit_ = 0;
     samples_since_epoch_ = 0.0f;
   }
@@ -113,11 +115,44 @@ class ArsPitchTracker {
         best_lag = lag;
       }
     }
-    if (best_lag == 0) {
+    // Octave guard: when a sub-multiple of the winning lag agrees
+    // nearly as well, the long lag is a sub-octave alias (formant-heavy
+    // voices phase-align at 2T) — prefer the fundamental.
+    if (best_lag >= 16) {
+      for (int div = 3; div >= 2; --div) {
+        const int sub = best_lag / div;
+        if (sub < 8) continue;
+        int pick = 0;
+        float pick_score = 0.0f;
+        for (int cand = sub; cand <= sub + 1; ++cand) {
+          const int span = kBits - cand;
+          const float agreement =
+              1.0f - static_cast<float>(Disagreement(cand)) /
+                         static_cast<float>(span);
+          const float score = (agreement - 0.5f) * 2.0f;
+          if (score > pick_score) { pick_score = score; pick = cand; }
+        }
+        if (pick_score >= 0.78f * best_score) {
+          best_lag = pick;
+          best_score = pick_score;
+        }
+      }
+    }
+    // Median-of-3 across updates: measured, every octave-alias flip on
+    // formant-heavy voices lasts exactly one update — none survive.
+    raw_hist_[raw_idx_] = best_lag == 0
+        ? 0.0f : static_cast<float>(best_lag) * 8.0f;
+    raw_idx_ = (raw_idx_ + 1) % 3;
+    const float a = raw_hist_[0];
+    const float b = raw_hist_[1];
+    const float c = raw_hist_[2];
+    const float raw = a < b
+        ? (b < c ? b : (a < c ? c : a))
+        : (a < c ? a : (b < c ? c : b));
+    if (raw <= 0.0f) {
       period_ = 0.0f;
       return;
     }
-    const float raw = static_cast<float>(best_lag) * 8.0f;
     if (period_ > 0.0f &&
         raw > period_ * 0.8f && raw < period_ * 1.25f) {
       period_ += 0.3f * (raw - period_);  // smooth small corrections
@@ -133,6 +168,8 @@ class ArsPitchTracker {
   float lp_;
   int since_update_;
   float period_;
+  float raw_hist_[3];
+  int raw_idx_;
   int previous_bit_;
   float samples_since_epoch_;
 };

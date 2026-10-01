@@ -71,6 +71,8 @@ int main(int argc, char** argv) {
   const int trig_secs = argc > 13 ? atoi(argv[13]) : 0;
   const int freeze_after = argc > 14 ? atoi(argv[14]) : -1;
   const float loop = argc > 15 ? atof(argv[15]) : 0.5f;
+  const int voice_mode = argc > 16 ? atoi(argv[16]) : 0;
+  const float pitch_st = argc > 17 ? atof(argv[17]) : 0.0f;
 
   FILE* fp_in = fopen(in_path, "rb");
   if (!fp_in) {
@@ -95,7 +97,8 @@ int main(int argc, char** argv) {
                  &small_buffer[0], sizeof(small_buffer));
   processor.set_num_channels(2);
   processor.set_low_fidelity(false);
-  processor.set_playback_mode(PLAYBACK_MODE_GRANULAR);
+  processor.set_playback_mode(
+      voice_mode ? PLAYBACK_MODE_SPECTRAL : PLAYBACK_MODE_GRANULAR);
   processor.Prepare();
 
   FILE* fp_out = fopen(out_path, "wb");
@@ -114,7 +117,7 @@ int main(int argc, char** argv) {
         sample_clock >= static_cast<size_t>(freeze_after) * kSampleRate;
     p->position = 0.2f;
     p->size = size_knob;
-    p->pitch = 0.0f;
+    p->pitch = pitch_st;
     p->density = zone == -2 ? (density < 0.47f ? density : 0.47f)
                             : (density > 0.53f ? density : 0.53f);
     if (zone == -2) {
@@ -126,7 +129,8 @@ int main(int argc, char** argv) {
     p->texture = texture;
     p->feedback = feedback;
     p->dry_wet = 1.0f;
-    p->reverb = 0.0f;
+    p->reverb = (voice_mode && harmony > 0)
+        ? 0.05f + 0.95f * chord : 0.0f;
     p->stereo_spread = detune / 40.0f;  // firmware maps spread->detune
     p->ars_zone = zone >= 0 ? zone : -1;
     p->ars_character = character;

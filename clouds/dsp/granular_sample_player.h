@@ -240,7 +240,9 @@ class GranularSamplePlayer {
           ars_countdown_ += gap;
           seed_ars = true;
 #ifdef TEST
-          fprintf(stderr, "ARS %ld\n", ars_block_base + static_cast<long>(t));
+          fprintf(stderr, "ARS %ld %.4f\n",
+                  ars_block_base + static_cast<long>(t),
+                  ars_gaps_.last_voice_u());
 #endif
 
           // Chord clouds: the gap statistics choose the voice (short gaps

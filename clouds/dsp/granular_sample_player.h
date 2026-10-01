@@ -70,6 +70,15 @@ class GranularSamplePlayer {
     onset_write_ = static_cast<uint8_t>((onset_write_ + 1) % kNumOnsets);
   }
 
+  // Epoch map for the VOICE mode: the processor reports each tracked
+  // glottal epoch's buffer position; PSOLA pulses center on them.
+  void NoteEpoch(int32_t position, int32_t buffer_size) {
+    while (position >= buffer_size) position -= buffer_size;
+    while (position < 0) position += buffer_size;
+    epoch_ring_[epoch_write_] = position;
+    epoch_write_ = static_cast<uint8_t>((epoch_write_ + 1) % kNumEpochs);
+  }
+
 #ifdef TEST
   // Falsification tap: exact ARS spawn times (sample index), so the
   // statistics are verified through the real scheduler path instead of
@@ -92,6 +101,14 @@ class GranularSamplePlayer {
     ars_gaps_.Init(0xC10D5EEDu);
     for (int i = 0; i < kNumOnsets; ++i) onset_ring_[i] = 0xFFFF;
     onset_write_ = 0;
+    for (int i = 0; i < kNumEpochs; ++i) epoch_ring_[i] = -1;
+    epoch_write_ = 0;
+    for (int i = 0; i < 4; ++i) {
+      psola_countdown_[i] = 1.0f;
+      psola_epoch_a_[i] = -1;
+      psola_epoch_b_[i] = -1;
+      psola_xfade_[i] = 0.0f;
+    }
     ars_countdown_ = 1.0f;
     ars_transpose_ = 0.0f;
     ars_position_offset_ = 0.0f;
@@ -184,6 +201,9 @@ class GranularSamplePlayer {
 #endif
     
     // Try to schedule new grains.
+    if (parameters.ars_psola) {
+      SchedulePsola(buffer, parameters, num_available_grains, size);
+    } else {
     bool seed_trigger = parameters.trigger;
     for (size_t t = 0; t < size; ++t) {
       grain_rate_phasor_ += 1.0f;
@@ -330,6 +350,7 @@ class GranularSamplePlayer {
         seed_trigger = false;
       }
     }
+    }
     
     // Overlap grains.
     std::fill(&out[0], &out[size * 2], 0.0f);
@@ -361,13 +382,18 @@ class GranularSamplePlayer {
     int32_t active_grains = max_num_grains_ - num_available_grains;
     SLOPE(num_grains_, static_cast<float>(active_grains), 0.9f, 0.2f);
 
-    float gain_normalization = num_grains_ > 2.0f
-        ? fast_rsqrt_carmack(num_grains_ - 1.0f)
-        : 1.0f;  
-    float window_gain = 1.0f + 2.0f * parameters.granular.window_shape;
-    CONSTRAIN(window_gain, 1.0f, 2.0f);
-    gain_normalization *= Crossfade(
-        1.0f, window_gain, parameters.granular.overlap);
+    // VOICE mode normalizes per-pulse (COLA math in SchedulePsola);
+    // the grain-count rule would make loudness track pitch.
+    float gain_normalization = 1.0f;
+    if (!parameters.ars_psola) {
+      gain_normalization = num_grains_ > 2.0f
+          ? fast_rsqrt_carmack(num_grains_ - 1.0f)
+          : 1.0f;
+      float window_gain = 1.0f + 2.0f * parameters.granular.window_shape;
+      CONSTRAIN(window_gain, 1.0f, 2.0f);
+      gain_normalization *= Crossfade(
+          1.0f, window_gain, parameters.granular.overlap);
+    }
 
     // Apply gain normalization.
     for (size_t t = 0; t < size; ++t) {
@@ -389,6 +415,183 @@ class GranularSamplePlayer {
     return num_available_grains;
   }
   
+  // --- Lenticular VOICE: TD-PSOLA -----------------------------------
+  // A pulse is a grain that is never resampled (phase increment 1.0): a
+  // ~2-period Hann window centered on a tracked glottal epoch,
+  // overlap-added at the TARGET period. Pitch comes from pulse spacing,
+  // so formants stay where the throat put them. The rigidity ladder
+  // jitters that spacing: phonation quality, machine-smooth to fry.
+  template<Resolution resolution>
+  void SchedulePsola(
+      const AudioBuffer<resolution>* buffer,
+      const Parameters& parameters,
+      int32_t num_available_grains,
+      size_t size) {
+    const int32_t buffer_size = buffer->size();
+    const int32_t head = buffer->head();
+    const float period = parameters.ars_period;
+    const bool voiced = period >= 50.0f && period <= 700.0f;
+    const bool harmony = parameters.ars_harmony > 0 && voiced;
+    const int num_voices = harmony ? 4 : 1;
+    const int chord = static_cast<int>(parameters.ars_chord * 10.999f);
+    const int16_t* cents = parameters.ars_harmony == 1
+        ? ars::kMetallicChords[chord] : ars::kHarmonicChords[chord];
+    // Phonation depth by zone (processor maps TEXTURE CCW->CW as
+    // machine, healthy, patterned, rough->fry: monotone roughness).
+    float k = 0.0f;
+    switch (parameters.ars_zone) {
+      case 1: k = 0.01f + 0.05f * parameters.ars_character; break;
+      case 2: k = 0.10f; break;
+      case 5: k = 0.30f + 0.25f * parameters.ars_character; break;
+      default: break;
+    }
+    // Window width in periods rides DENSITY: narrow buzz -> smooth choir.
+    // Classic PSOLA wants ~2 periods: much wider and each grain carries
+    // several glottal pulses, and overlap-add reconstructs the ORIGINAL
+    // comb instead of the target pitch (measured: 2.5T windows pinned
+    // output f0 at the input's). 1.3..2.3 periods, 1.8 at noon.
+    const float width_periods = 1.3f + 1.0f * parameters.granular.overlap;
+    // Live tracking follows the newest epoch; frozen, POSITION scrubs
+    // back through the stored ring: a vowel held still, played anywhere.
+    int back = 0;
+    if (parameters.freeze) {
+      back = static_cast<int>(parameters.position * (kNumEpochs - 2));
+    }
+    const int32_t epoch = epoch_ring_[
+        (epoch_write_ + 2 * kNumEpochs - 1 - back) % kNumEpochs];
+#ifdef TEST
+    const long block_base = ars_test_clock_ - static_cast<long>(size);
+#endif
+    const float pan_fan[4] = { 0.0f, -0.4f, 0.4f, -0.15f };
+    for (size_t t = 0; t < size; ++t) {
+      for (int v = 0; v < num_voices; ++v) {
+        if (!(psola_countdown_[v] >= 0.0f
+              && psola_countdown_[v] < 65536.0f)) {
+          psola_countdown_[v] = 1.0f;  // same self-heal as the ARS path
+        }
+        psola_countdown_[v] -= 1.0f;
+        if (psola_countdown_[v] > 0.0f) continue;
+        float t_out, width, amp;
+        int32_t start;
+        bool dual = false;
+        int32_t start_b = 0;
+        float xfade = 0.0f;
+        if (voiced && epoch >= 0) {
+          float transpose = parameters.pitch
+              + (harmony ? cents[v] * 0.01f : 0.0f);
+          if (v > 0) {
+            // Choir humanize: SIZE loosens each voice, up to +/-30 cents.
+            transpose += (Random::GetFloat() - 0.5f) * 0.6f * parameters.size;
+          }
+          float ratio = SemitonesToRatio(transpose);
+          if (ratio > 3.0f) ratio = 3.0f;    // overlap (= grain) budget
+          if (ratio < 0.125f) ratio = 0.125f;
+          t_out = period / ratio;
+          width = period * width_periods;
+          if (width > 3800.0f) width = 3800.0f;
+          // Pitch-synchronous wavetable: each voice loops ONE epoch's
+          // wavelet at the target period — perfectly periodic at the new
+          // pitch. Plain PSOLA re-anchors every input period, and that
+          // content hop keeps the ORIGINAL comb alive (measured: output
+          // pitch pinned at the input's). Content follows the voice by
+          // crossfading to a fresher epoch over ~30 ms instead.
+          if (psola_epoch_a_[v] < 0) psola_epoch_a_[v] = epoch;
+          if (psola_xfade_[v] <= 0.0f && epoch != psola_epoch_a_[v]) {
+            psola_epoch_b_[v] = epoch;
+            psola_xfade_[v] = 1e-3f;
+          }
+          if (psola_xfade_[v] > 0.0f && psola_epoch_b_[v] >= 0) {
+            dual = true;
+            xfade = psola_xfade_[v];
+            start_b = psola_epoch_b_[v]
+                - static_cast<int32_t>(0.5f * width);
+            psola_xfade_[v] += t_out * (1.0f / 1024.0f);
+            if (psola_xfade_[v] >= 1.0f) {
+              psola_epoch_a_[v] = psola_epoch_b_[v];
+              psola_epoch_b_[v] = -1;
+              psola_xfade_[v] = 0.0f;
+              dual = false;
+              xfade = 0.0f;
+              // the completed fade's stream A is the new content
+            }
+          }
+          start = psola_epoch_a_[v] - static_cast<int32_t>(0.5f * width);
+          amp = 2.0f * t_out / width;   // COLA: Hann sum back to unity
+          if (amp > 1.2f) amp = 1.2f;
+        } else {
+          psola_epoch_a_[v] = -1;
+          psola_epoch_b_[v] = -1;
+          psola_xfade_[v] = 0.0f;
+          // Unvoiced (or no epoch yet): identity OLA passthrough — pulse
+          // respacing does not transpose noise, which is exactly right.
+          if (v > 0) { psola_countdown_[v] = 128.0f; continue; }
+          t_out = 128.0f;
+          width = 256.0f;
+          start = head - 300;
+          amp = 0.85f;  // headroom: percussive inputs clipped at 1.0
+        }
+        float factor = 1.0f;
+        if (k > 0.0f) {
+          // The ladder jitters the spacing; breath jitters the gain.
+          const float j = ars_gaps_.NextGap(
+              parameters.ars_zone, parameters.ars_character, 100.0f)
+              * (1.0f / 100.0f);
+          factor = 1.0f + k * (j - 1.0f);
+          if (factor < 0.6f) factor = 0.6f;
+          if (factor > 1.9f) factor = 1.9f;
+          amp *= 1.0f + 0.4f * k * (j - 1.0f);
+        }
+        psola_countdown_[v] += t_out * factor;
+        if (!num_available_grains) continue;
+        --num_available_grains;
+        const int32_t index = available_grains_[num_available_grains];
+        const GrainQuality quality =
+            num_available_grains < num_midfi_grains_
+                ? GRAIN_QUALITY_MEDIUM : GRAIN_QUALITY_HIGH;
+        // Choir panning rides the stereo-spread page: lead center.
+        float pan = 0.5f + parameters.stereo_spread * pan_fan[v];
+        CONSTRAIN(pan, 0.0f, 1.0f);
+        float gain_l, gain_r;
+        if (num_channels_ == 1) {
+          gain_l = Interpolate(lut_sin, pan, 256.0f);
+          gain_r = Interpolate(lut_sin + 256, pan, 256.0f);
+        } else if (pan < 0.5f) {
+          gain_l = 1.0f; gain_r = 2.0f * pan;
+        } else {
+          gain_r = 1.0f; gain_l = 2.0f * (1.0f - pan);
+        }
+        const float wa = dual ? 1.0f - xfade : 1.0f;
+        grains_[index].Start(
+            static_cast<int32_t>(t),
+            buffer_size,
+            start,
+            static_cast<int32_t>(width) & ~1,
+            65536,  // ratio 1.0: the voice never resamples
+            1.0f,   // smoothest window: Hann, COLA-clean
+            gain_l * amp * wa, gain_r * amp * wa,
+            quality);
+        if (dual && num_available_grains) {
+          --num_available_grains;
+          const int32_t ib = available_grains_[num_available_grains];
+          grains_[ib].Start(
+              static_cast<int32_t>(t),
+              buffer_size,
+              start_b,
+              static_cast<int32_t>(width) & ~1,
+              65536,
+              1.0f,
+              gain_l * amp * xfade, gain_r * amp * xfade,
+              num_available_grains < num_midfi_grains_
+                  ? GRAIN_QUALITY_MEDIUM : GRAIN_QUALITY_HIGH);
+        }
+#ifdef TEST
+        fprintf(stderr, "PSV %ld %d %.1f\n",
+                block_base + static_cast<long>(t), v, t_out * factor);
+#endif
+      }
+    }
+  }
+
   void ScheduleGrain(
       Grain* grain,
       const Parameters& parameters,
@@ -496,6 +699,13 @@ class GranularSamplePlayer {
   static const int kNumOnsets = 16;
   uint16_t onset_ring_[kNumOnsets];
   uint8_t onset_write_;
+  static const int kNumEpochs = 32;
+  int32_t epoch_ring_[kNumEpochs];
+  uint8_t epoch_write_;
+  float psola_countdown_[4];
+  int32_t psola_epoch_a_[4];
+  int32_t psola_epoch_b_[4];
+  float psola_xfade_[4];
 #ifndef ARS_LEAN
   int16_t ars_bar_;
   int16_t ars_step_;

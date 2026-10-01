@@ -22,9 +22,10 @@ fragile and a single glitch corrupts it; the build is fine.
 
 ## What changed, what didn't
 
-Only **granular mode** (mode 1) is rebuilt. Stretch, looping delay, and
-spectral modes are stock, including their reverb. FREEZE, POSITION, SIZE,
-PITCH, IN GAIN behave exactly as stock everywhere.
+**Granular mode** (mode 1) is rebuilt, and **spectral mode (mode 4) is
+replaced by VOICE** — a formant-preserving pitch-shifter/harmonizer.
+Stretch and looping delay are stock, including their reverb. FREEZE,
+POSITION, SIZE, PITCH, IN GAIN behave as stock in modes 1–3.
 
 ## Granular mode panel
 
@@ -52,11 +53,42 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 | 3 | — | **Feedback**, stock — the "echo" personality. Pairs beautifully with motif timing. |
 | 4 | — | **Harmony** *(was reverb — you have a rack for that)*: CCW = off; turning up walks a chord ladder — octave, fifth, sus4, minor, m7, m9, m11, 6/9, M9, M7, major. Each grain is transposed to a **chord tone chosen by the timing statistics**: short gaps play low voices, long gaps high ones. Silk arpeggiates evenly; motif plays three-note figures; loose sprays free harmony. |
 
+## VOICE mode (mode 4 — was spectral)
+
+A TD-PSOLA harmonizer with a statistical throat. The firmware tracks
+your fundamental, cuts one wavelet per glottal cycle, and loops it at
+the **target** period — pitch moves, formants stay. Transpose your
+voice (or bass) and it is still *you*, not a chipmunk. Verified:
+transposition exact from −5 to +12 semitones, formant envelope held
+within 1 dB of unity while plain resampling smears it by 6 dB.
+
+| Control | Function |
+|---|---|
+| **PITCH / V-Oct** | Formant-preserving transpose, ±4 octaves (up-shift capped ~+19 st). |
+| **TEXTURE** | **Phonation** — the ladder as a throat, CCW→CW: *machine* (CV 0.00, vocoder-flat), *healthy* (1–6% jitter, human), *patterned* (motif pulse), *rough → fry* (Poisson spacing, CV 0.43). |
+| **DENSITY** | Wavelet width, 1.3–2.3 periods: narrow = buzzy/robotic, wide = soft. |
+| **SIZE** | Choir looseness — harmony voices humanize up to ±30¢ per pulse. |
+| **POSITION** | Frozen: scrubs back through the stored epoch ring — a vowel held still, played anywhere. |
+| **Blend p4** | **Harmony** — same chord ladder; all four chord tones sound at once: a choir of you. |
+| **Blend p2** | Choir stereo fan — lead center, harmony voices spread. |
+| **FREEZE** | Holds the wavelet and period: infinite sustained vowel, still transposable. |
+
+Unvoiced sounds (consonants, noise) pass through untransposed — pulse
+respacing does not transpose noise, which is exactly right: your s's
+stay s's while your vowels harmonize. Bass guitar tracks as voice (the
+tracker reaches 50 Hz): formant-preserved bass transposition — the
+808-octave trick on any riff.
+
 ## Recipes
 
 - **The vocal processor** (the headline): voice in, full wet, DENSITY 2
   o'clock, TEXTURE in the motif zone, Harmony at m7, a breath of Feedback.
   Speak or sing; it answers in harmonized fragments of you.
+- **The choir** (mode 4): sing, Harmony at a chord, blend p2 up, SIZE
+  at noon. Four of you, in tune, in stereo. TEXTURE CW turns the choir's
+  throats rough; fully CW they fry.
+- **808 bass** (mode 4): bass in, PITCH +12 or a sequenced V/Oct line.
+  Your tone, not a sped-up tape of it.
 - **Silk wall**: sustained input, DENSITY high, TEXTURE fully CCW, Harmony
   off. A texture with no lumps — impossible on stock.
 - **Reese anything**: bass-ish input, SIZE past 3 o'clock, DENSITY high,
@@ -94,6 +126,9 @@ PITCH, IN GAIN behave exactly as stock everywhere.
 
 ## Version
 
+v0.8 — VOICE mode: TD-PSOLA harmonizer replaces spectral; the ladder
+becomes phonation (machine/healthy/patterned/fry); octave-guarded,
+median-filtered pitch tracker; formant preservation measured.
 v0.7 — **named Lenticular** · onset-aware POSITION (motif/chip snap to
 your transients) + loop/fray on hold-MODE+DENSITY (saved).
 v0.6 — CHIP zone: the Follin arp comes to Clouds (TEXTURE top).

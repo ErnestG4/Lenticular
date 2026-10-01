@@ -77,6 +77,8 @@ struct Parameters {
   // Realization identity: 0 CCW tight 8-gap riff .. 0.5 stock 64 .. 1 full
   // freerun (fray). TRIG replays the stored realization from the top.
   float ars_loop;
+  bool ars_psola;    // VOICE mode: player runs the TD-PSOLA scheduler
+  float ars_period;  // tracked fundamental period, samples; 0 = unvoiced
   
   struct Spectral {
     float quantization;

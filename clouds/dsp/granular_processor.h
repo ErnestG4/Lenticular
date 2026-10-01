@@ -40,7 +40,7 @@
 #include "clouds/dsp/granular_processor.h"
 #include "clouds/dsp/granular_sample_player.h"
 #include "clouds/dsp/looping_sample_player.h"
-#include "clouds/dsp/pvoc/phase_vocoder.h"
+#include "clouds/dsp/ars_pitch.h"
 #include "clouds/dsp/sample_rate_converter.h"
 #include "clouds/dsp/wsola_sample_player.h"
 
@@ -181,9 +181,11 @@ class GranularProcessor {
   float onset_fast_;
   float onset_slow_;
   int32_t onset_refractory_;
+  ArsPitchTracker ars_pitch_;
+  float psola_prev_epoch_age_;
+  float psola_period_lp_;
   WSOLASamplePlayer ws_player_;
   LoopingSamplePlayer looper_;
-  PhaseVocoder phase_vocoder_;
   
   Diffuser diffuser_;
   Reverb reverb_;

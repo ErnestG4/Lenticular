@@ -1,6 +1,6 @@
-// Copyright 2014 Olivier Gillet.
+// Copyright 2014 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -45,25 +45,43 @@ struct Parameters {
   float reverb;
   
   bool freeze;
-  bool capture;
+  bool trigger;
   bool gate;
   
   struct Granular {
+    bool reverse;   // consumed by stretch/looping players (Supercell)
     float overlap;
     float window_shape;
     float stereo_spread;
     bool use_deterministic_seed;
-    bool reverse;
   } granular;
 
-  struct Spectral {
-    float quantization;
-    float refresh_rate;
-    float phase_randomization;
-    float warp;
-  } spectral;
+  // ARS rigidity-ladder grain scheduling. Zone -1 = stock scheduler
+  // (deterministic/probabilistic per use_deterministic_seed); zones 0..6
+  // draw inter-onset gaps from the corresponding spacing statistics, with
+  // ars_character as the in-zone parameter.
+  int8_t ars_zone;
+  float ars_character;
 
-  struct Kammerl {
+  // Chord clouds: 0 = off (grains at knob pitch), 1 = Metallic Means table,
+  // 2 = twelve-bar progression advanced on gap-sum wrap downbeats,
+  // 3 = classic harmonic chord table. ars_chord selects the chord in table
+  // modes. Voice per grain comes from the gap statistics.
+  int8_t ars_harmony;
+  float ars_chord;
+
+  // Reese: alternating grains detune +/- half this many cents around their
+  // chord tone (or around knob pitch with harmony off). Long overlapping
+  // grains turn the pairs into the classic beating growl.
+  float ars_detune;
+
+  // Realization identity: 0 CCW tight 8-gap riff .. 0.5 stock 64 .. 1 full
+  // freerun (fray). TRIG replays the stored realization from the top.
+  float ars_loop;
+  bool ars_psola;    // VOICE mode: player runs the TD-PSOLA scheduler
+  float ars_period;  // tracked fundamental period, samples; 0 = unvoiced
+  bool capture;      // Supercell platform compatibility (unused by DSP)
+  struct Kammerl {   // dead fields the Supercell cv_scaler still writes
     float probability;
     float pitch_mode;
     float clock_divider;
@@ -73,6 +91,13 @@ struct Parameters {
     float size_modulation;
     float pitch;
   } kammerl;
+  
+  struct Spectral {
+    float quantization;
+    float refresh_rate;
+    float phase_randomization;
+    float warp;
+  } spectral;
 };
 
 }  // namespace clouds

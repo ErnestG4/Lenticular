@@ -1,6 +1,6 @@
-// Copyright 2014 Olivier Gillet.
+// Copyright 2014 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -39,9 +39,6 @@
 
 namespace clouds {
 
-const float slope_response[4] = { 1.3f, 1.0f, 1.0f, 1.0f };
-const float bias_response[4] = { 1.0f, 2.0f - 1.0f/500.0f, 1.0f/500.0f, 1.0f };
-
 enum GrainQuality {
   GRAIN_QUALITY_LOW,
   GRAIN_QUALITY_MEDIUM,
@@ -53,17 +50,6 @@ class Grain {
   Grain() { }
   ~Grain() { }
 
-  inline float InterpolatePlateau(const float* table, float index, float size) {
-    index *= size;
-    MAKE_INTEGRAL_FRACTIONAL(index)
-      float a = table[index_integral];
-    float b = table[index_integral + 1];
-    if (index_fractional < 1.0f/1.1f)
-      return a + (b - a) * index_fractional * 1.1f;
-    else
-      return b;
-  }
-
   void Init() {
     active_ = false;
     envelope_phase_ = 2.0f;
@@ -74,49 +60,53 @@ class Grain {
       int32_t buffer_size,
       int32_t start,
       int32_t width,
-      bool reverse,
       int32_t phase_increment,
       float window_shape,
       float gain_l,
       float gain_r,
       GrainQuality recommended_quality) {
     pre_delay_ = pre_delay;
-    reverse_ = reverse;
-
+    width_ = width;
     first_sample_ = (start + buffer_size) % buffer_size;
-    if (reverse) {
-      phase_increment_ = -phase_increment;
-      phase_ = width * phase_increment;
-    } else {
-      phase_increment_ = phase_increment;
-      phase_ = 0;
-    }
+    phase_increment_ = phase_increment;
+    phase_ = 0;
     envelope_phase_ = 0.0f;
     envelope_phase_increment_ = 2.0f / static_cast<float>(width);
-
-    envelope_slope_ = InterpolatePlateau(slope_response, window_shape, 3);
-    envelope_slope_ *= envelope_slope_ * envelope_slope_;
-    envelope_slope_ *= envelope_slope_ * envelope_slope_;
-    envelope_slope_ *= envelope_slope_ * envelope_slope_;
-    envelope_bias_ = InterpolatePlateau(bias_response, window_shape, 3);
-
+    if (window_shape >= 0.5f) {
+      envelope_smoothness_ = (window_shape - 0.5f) * 2.0f;
+      envelope_slope_ = 0.0f;
+    } else {
+      envelope_smoothness_ = 0.0f;
+      envelope_slope_ = 0.5f / (window_shape + 0.01f);
+    }
     active_ = true;
     gain_l_ = gain_l;
     gain_r_ = gain_r;
     recommended_quality_ = recommended_quality;
   }
   
+  template<bool use_lut_for_envelope, GrainQuality quality>
   inline void RenderEnvelope(float* destination, size_t size) {
     const float increment = envelope_phase_increment_;
+    const float smoothness = envelope_smoothness_;
     const float slope = envelope_slope_;
-    const float bias = envelope_bias_;
 
     float phase = envelope_phase_;
     while (size--) {
-      float gain = phase <= bias ?
-        phase * slope / bias :
-        (2.0f - phase) * slope / (2.0f - bias);
-      if (gain > 1.0f) gain = 1.0f;
+      float gain = phase;
+      gain = gain >= 1.0f ? 2.0f - gain : gain;
+      if (use_lut_for_envelope) {
+        if (quality == GRAIN_QUALITY_HIGH) {
+          float window = 0.0f;
+          window = stmlib::Interpolate(lut_window, gain, 4096.0f);
+          gain += smoothness * (window - gain);
+        }
+      } else {
+        if (quality >= GRAIN_QUALITY_MEDIUM) {
+          gain *= slope;
+          if (gain >= 1.0f) gain = 1.0f;
+        }
+      }
       phase += increment;
       if (phase >= 2.0f) {
         *destination = -1.0f;
@@ -146,8 +136,12 @@ class Grain {
     }
     
     // Pre-render the envelope in one pass.
-    RenderEnvelope(envelope, size);
-
+    if (envelope_smoothness_ == 0.0f) {
+      RenderEnvelope<false, quality>(envelope, size);
+    } else {
+      RenderEnvelope<true, quality>(envelope, size);
+    }
+    
     const int32_t phase_increment = phase_increment_;
     const int32_t first_sample = first_sample_;
     const float gain_l = gain_l_;
@@ -155,7 +149,7 @@ class Grain {
     int32_t phase = phase_;
     while (size--) {
       int32_t sample_index = first_sample + (phase >> 16);
-
+      
       float gain = *envelope++;
       if (gain == -1.0f) {
         active_ = false;
@@ -186,12 +180,13 @@ class Grain {
 
  private:
   int32_t first_sample_;
+  int32_t width_;
   int32_t phase_;
   int32_t phase_increment_;
   int32_t pre_delay_;
 
+  float envelope_smoothness_;
   float envelope_slope_;
-  float envelope_bias_;         /* asymetry of envelope: -1..1 */
   float envelope_phase_;
   float envelope_phase_increment_;
 
@@ -199,7 +194,6 @@ class Grain {
   float gain_r_;
 
   bool active_;
-  bool reverse_;
   
   GrainQuality recommended_quality_;
 

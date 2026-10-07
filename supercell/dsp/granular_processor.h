@@ -1,6 +1,6 @@
-// Copyright 2014 Olivier Gillet.
+// Copyright 2014 Emilie Gillet.
 //
-// Author: Olivier Gillet (ol.gillet@gmail.com)
+// Author: Emilie Gillet (emilie.o.gillet@gmail.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,13 +37,10 @@
 #include "supercell/dsp/fx/diffuser.h"
 #include "supercell/dsp/fx/pitch_shifter.h"
 #include "supercell/dsp/fx/reverb.h"
-#include "supercell/dsp/resonestor.h"
-#include "supercell/dsp/fx/oliverb.h"
 #include "supercell/dsp/granular_processor.h"
 #include "supercell/dsp/granular_sample_player.h"
-#include "supercell/dsp/kammerl_player.h"
 #include "supercell/dsp/looping_sample_player.h"
-#include "supercell/dsp/pvoc/phase_vocoder.h"
+#include "supercell/dsp/ars_pitch.h"
 #include "supercell/dsp/sample_rate_converter.h"
 #include "supercell/dsp/wsola_sample_player.h"
 
@@ -56,10 +53,6 @@ enum PlaybackMode {
   PLAYBACK_MODE_STRETCH,
   PLAYBACK_MODE_LOOPING_DELAY,
   PLAYBACK_MODE_SPECTRAL,
-  PLAYBACK_MODE_OLIVERB,
-  PLAYBACK_MODE_RESONESTOR,
-  PLAYBACK_MODE_KAMMERL,
-  PLAYBACK_MODE_SPECTRAL_CLOUD,
   PLAYBACK_MODE_LAST
 };
 
@@ -102,7 +95,7 @@ class GranularProcessor {
   inline void ToggleFreeze() {
     parameters_.freeze = !parameters_.freeze;
   }
-
+  
   inline void set_freeze(bool freeze) {
     parameters_.freeze = freeze;
   }
@@ -111,19 +104,10 @@ class GranularProcessor {
     return parameters_.freeze;
   }
 
-
-  inline void ToggleReverse() {
-    parameters_.granular.reverse = !parameters_.granular.reverse;
-  }
-
-  inline bool reversed() const {
-    return parameters_.granular.reverse;
-  }
-
   inline void set_silence(bool silence) {
     silence_ = silence;
   }
-
+  
   inline void set_bypass(bool bypass) {
     bypass_ = bypass;
   }
@@ -132,21 +116,16 @@ class GranularProcessor {
     return bypass_;
   }
 
-  inline void set_mute_out(bool mute) {
-    mute_out_ = mute;
-  }
-
-  inline bool mute_out() const {
-    return mute_out_;
-  }
-
-  inline void set_mute_in(bool mute) {
-    mute_in_ = mute;
-  }
-
-  inline bool mute_in() const {
-    return mute_in_;
-  }
+  // Supercell platform surface: mutes and silence gate the audio path;
+  // reverse is stored for the panel LED but inert in v0 (the Lenticular
+  // player has no reverse yet - honest TODO).
+  inline void set_mute_in(bool mute) { mute_in_ = mute; }
+  inline void set_mute_out(bool mute) { mute_out_ = mute; }
+  inline bool mute_in() const { return mute_in_; }
+  inline bool mute_out() const { return mute_out_; }
+  inline void set_reverse(bool reverse) { reverse_ = reverse; }
+  inline void ToggleReverse() { reverse_ = !reverse_; }
+  inline bool reversed() const { return reverse_; }
   
   inline void set_playback_mode(PlaybackMode playback_mode) {
     playback_mode_ = playback_mode;
@@ -181,8 +160,6 @@ class GranularProcessor {
   void PreparePersistentData();
 
  private:
-  void WarmDistortion(float* in, float parameter);
-
   inline int32_t resolution() const {
     return low_fidelity_ ? 8 : 16;
   }
@@ -202,12 +179,10 @@ class GranularProcessor {
   
   bool silence_;
   bool bypass_;
-  bool reset_buffers_;
   bool mute_in_;
   bool mute_out_;
-  float mute_in_fade_;
-  float mute_out_fade_;
-
+  bool reverse_;
+  bool reset_buffers_;
   float freeze_lp_;
   float dry_wet_;
   
@@ -217,15 +192,17 @@ class GranularProcessor {
   Correlator correlator_;
   
   GranularSamplePlayer player_;
+  float onset_fast_;
+  float onset_slow_;
+  int32_t onset_refractory_;
+  ArsPitchTracker ars_pitch_;
+  float psola_prev_epoch_age_;
+  float psola_period_lp_;
   WSOLASamplePlayer ws_player_;
   LoopingSamplePlayer looper_;
-  PhaseVocoder phase_vocoder_;
-  KammerlPlayer kammerl_;
   
   Diffuser diffuser_;
   Reverb reverb_;
-  Oliverb oliverb_;
-  Resonestor resonestor_;
   PitchShifter pitch_shifter_;
   stmlib::Svf fb_filter_[2];
   stmlib::Svf hp_filter_[2];

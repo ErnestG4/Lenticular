@@ -8,8 +8,20 @@ washes that cannot clump, quasiperiodic motif scrubbing, Poisson, and a
 rigid chip-arp grid — plus per-grain chord harmonization, Reese twins,
 and replayable grain clouds. Full manual: [clouds/ARS-MANUAL.md](clouds/ARS-MANUAL.md).
 
-**Status: v0.7 pre-release, under hardware testing.** Flashable WAV
-releases will appear once the current build clears.
+**Current release: v0.8** — grab the flashable WAV from the
+[Releases page](https://github.com/ErnestG4/Lenticular/releases) and
+play the firmware into your module (see Flashing below). v0.8 adds
+**VOICE mode**: a formant-preserving TD-PSOLA pitch-shifter/harmonizer
+in the spectral slot — transpose your voice or bass and it is still
+you; the rigidity ladder becomes phonation, from machine-smooth to
+vocal fry.
+
+## Flashing
+
+Standard Clouds audio update: hold the blend button on power-up, play
+the release WAV into the LEFT input at full line level, wait ~2
+minutes. If it doesn't boot afterwards, flash again — the audio
+transfer is fragile and one glitch corrupts it.
 
 ## Building
 
